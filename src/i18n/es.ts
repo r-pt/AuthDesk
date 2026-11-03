@@ -1,0 +1,15 @@
+export const es = {
+  searchPlaceholder: "Buscar servicio o cuenta...",
+  lockedTitle: "Bóveda Bloqueada",
+  masterPassword: "Contraseña Maestra",
+  unlockButton: "Desbloquear",
+  emptyAccounts: "No se encontraron cuentas",
+  copiedToast: "¡Código copiado al portapapeles!",
+  expiresIn: "expira en",
+  trayShow: "Mostrar AuthDesk",
+  trayHide: "Ocultar AuthDesk",
+  trayLock: "Bloquear",
+  trayQuit: "Salir",
+  pressEscToHide: "Esc para ocultar",
+  pressEnterToCopy: "Enter para copiar",
+};

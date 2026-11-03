@@ -1,0 +1,15 @@
+export const en = {
+  searchPlaceholder: "Search service or account...",
+  lockedTitle: "Vault Locked",
+  masterPassword: "Master Password",
+  unlockButton: "Unlock",
+  emptyAccounts: "No accounts found",
+  copiedToast: "Code copied to clipboard!",
+  expiresIn: "expires in",
+  trayShow: "Show AuthDesk",
+  trayHide: "Hide AuthDesk",
+  trayLock: "Lock",
+  trayQuit: "Quit",
+  pressEscToHide: "Esc to hide",
+  pressEnterToCopy: "Enter to copy",
+};
