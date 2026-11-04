@@ -1,0 +1,4 @@
+[package]
+name = "argon2"
+version = "0.5.3"
+edition = "2021"

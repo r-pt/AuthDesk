@@ -41,3 +41,7 @@ El equipo generará y ejecutará las pruebas automatizadas y chequeos correspond
 ## Follow-up — 2026-11-03T23:40:17Z
 
 El usuario aprobó el checklist y el commit de la Fase 0 ("apruebo"). Ejecutá el git commit de la Fase 0 (`feat: palette shell with tray, global shortcut and single instance`) y avanzá con la Fase 1: TOTP en memoria y paleta con códigos (pasos 1.1 a 1.6), respetando todas las reglas de trabajo del plan.
+
+## Follow-up — 2026-11-04T11:25:54Z
+
+El servidor se reinició y detuvo los subagentes activos. Por favor retomá y continuá con la ejecución de la Fase 1 (pasos 1.1 a 1.6) desde donde quedó, verificando el estado de los subagentes o relanzándolos según sea necesario. El usuario pidió avanzar con el equipo ("avanze noma con el team").

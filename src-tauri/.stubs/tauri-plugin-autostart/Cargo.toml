@@ -1,0 +1,4 @@
+[package]
+name = "tauri-plugin-autostart"
+version = "2.7.0"
+edition = "2021"

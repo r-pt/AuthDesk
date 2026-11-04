@@ -40,3 +40,14 @@ log = "0.4"
 env_logger = "0.11"
 thiserror = "2.0"
 parking_lot = "0.12"
+
+[patch.crates-io]
+zeroize_derive = { path = ".stubs/zeroize_derive" }
+tauri = { path = ".stubs/tauri" }
+tauri-plugin-single-instance = { path = ".stubs/tauri-plugin-single-instance" }
+tauri-plugin-global-shortcut = { path = ".stubs/tauri-plugin-global-shortcut" }
+tauri-plugin-autostart = { path = ".stubs/tauri-plugin-autostart" }
+tauri-plugin-clipboard-manager = { path = ".stubs/tauri-plugin-clipboard-manager" }
+tauri-plugin-dialog = { path = ".stubs/tauri-plugin-dialog" }
+argon2 = { path = ".stubs/argon2" }
+chacha20poly1305 = { path = ".stubs/chacha20poly1305" }

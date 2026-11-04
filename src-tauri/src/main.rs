@@ -4,8 +4,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
+extern crate authdesk_lib;
+
 use authdesk_lib::{
-    get_socket_path, send_toggle_to_primary, shortcut, start_single_instance_listener, tray,
+    send_toggle_to_primary, shortcut, start_single_instance_listener, tray,
     AppWindowState,
 };
 
@@ -73,7 +75,7 @@ fn main() {
 }
 
 fn ctrlc_handler(running: Arc<AtomicBool>) {
-    let r = running.clone();
+    let _r = running.clone();
     std::thread::spawn(move || {
         // En Linux, monitorear periódicamente stdin o señales de cierre
         // para salir limpiamente

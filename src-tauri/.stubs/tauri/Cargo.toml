@@ -1,0 +1,10 @@
+[package]
+name = "tauri"
+version = "2.12.5"
+edition = "2021"
+
+[dependencies]
+tauri-macros = { path = "../tauri-macros" }
+
+[features]
+tray-icon = []

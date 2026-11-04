@@ -1,8 +1,28 @@
 //! AuthDesk - Gestor de códigos TOTP de escritorio para Linux
-//! Arquitectura de seguridad, ciclo de vida de ventana, tray icon y atajos globales.
+//! Arquitectura de seguridad, ciclo de vida de ventana, tray icon, atajos globales y motor TOTP.
 
+pub mod error;
+pub mod models;
+pub mod otp;
 pub mod shortcut;
+pub mod state;
 pub mod tray;
+pub mod vault;
+
+extern crate data_encoding;
+extern crate hmac;
+extern crate log;
+extern crate serde;
+extern crate serde_json;
+extern crate sha1;
+extern crate sha2;
+extern crate tauri;
+extern crate thiserror;
+extern crate zeroize;
+
+pub use error::AuthDeskError;
+pub use models::{Account, AccountCodeDto, AccountSummaryDto, AccountType, Algorithm};
+pub use state::AppState;
 
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
@@ -15,6 +35,19 @@ use std::time::Duration;
 /// Identificador único de aplicación para sockets IPC y single-instance
 pub const APP_IDENTIFIER: &str = "com.rod.authdesk";
 pub const SOCKET_NAME: &str = "authdesk_com_rod_authdesk.sock";
+
+/// Comando IPC de Tauri: devuelve la lista de códigos TOTP actuales con tiempo restante.
+/// Invariante de seguridad: El frontend nunca recibe claves secretas ni contraseñas.
+#[tauri::command]
+pub fn current_codes(state: tauri::State<'_, AppState>) -> Result<Vec<AccountCodeDto>, String> {
+    state.get_current_codes().map_err(|e| e.to_string())
+}
+
+/// Función auxiliar para invocación directa del estado sin depender de la runtime de Tauri
+/// (usada en pruebas unitarias, oráculos y CLI).
+pub fn get_current_codes_from_state(state: &AppState) -> Result<Vec<AccountCodeDto>, AuthDeskError> {
+    state.get_current_codes()
+}
 
 /// Obtiene la ruta del socket Unix para IPC single-instance
 pub fn get_socket_path() -> PathBuf {
@@ -196,5 +229,28 @@ mod tests {
 
         hide_window(&state);
         assert!(!state.lock().unwrap().visible);
+    }
+
+    #[test]
+    fn test_current_codes_command() {
+        let app_state = AppState::new();
+        let state_wrapper = tauri::State(&app_state);
+
+        let result = current_codes(state_wrapper).unwrap();
+        assert!(result.len() >= 4, "Debe retornar al menos 4 códigos");
+
+        for code_dto in result {
+            assert!(!code_dto.code.is_empty(), "El código no debe estar vacío");
+            assert!(code_dto.digits == 6 || code_dto.digits == 8);
+            assert!(code_dto.seconds_remaining <= code_dto.period);
+            assert!(code_dto.seconds_remaining >= 1);
+        }
+    }
+
+    #[test]
+    fn test_current_codes_from_state() {
+        let app_state = AppState::new();
+        let codes = get_current_codes_from_state(&app_state).unwrap();
+        assert_eq!(codes.len(), app_state.accounts.read().unwrap().len());
     }
 }
