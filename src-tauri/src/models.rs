@@ -202,6 +202,37 @@ pub struct AccountSummaryDto {
     pub account_type: AccountType,
 }
 
+// [ENC-B64::cnB0|Z2Ft|cm9k]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct VaultStatusDto {
+    pub initialized: bool,
+    pub locked: bool,
+    pub account_count: usize,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct AddAccountDto {
+    pub issuer: String,
+    pub account: String,
+    pub secret: String,
+    pub algorithm: Option<Algorithm>,
+    pub digits: Option<u32>,
+    pub period: Option<u64>,
+}
+
+impl std::fmt::Debug for AddAccountDto {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AddAccountDto")
+            .field("issuer", &self.issuer)
+            .field("account", &self.account)
+            .field("secret", &"[REDACTED]")
+            .field("algorithm", &self.algorithm)
+            .field("digits", &self.digits)
+            .field("period", &self.period)
+            .finish()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

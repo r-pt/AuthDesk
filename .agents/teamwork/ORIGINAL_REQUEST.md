@@ -45,3 +45,20 @@ El usuario aprobó el checklist y el commit de la Fase 0 ("apruebo"). Ejecutá e
 ## Follow-up — 2026-11-04T11:25:54Z
 
 El servidor se reinició y detuvo los subagentes activos. Por favor retomá y continuá con la ejecución de la Fase 1 (pasos 1.1 a 1.6) desde donde quedó, verificando el estado de los subagentes o relanzándolos según sea necesario. El usuario pidió avanzar con el equipo ("avanze noma con el team").
+
+
+## Follow-up — 2026-11-04T14:36:53Z
+
+El usuario aprobó el commit de la Fase 1 y dio su ok para avanzar a la Fase 2 ("1. si porfavor 2. lo apruebo y 3 te doy mi ok").
+
+Instrucciones importantes del usuario que también debés respetar en la Fase 2:
+1. Primero hacé `git add . && git commit -m "feat: in-memory totp engine, rfc 6238 tests and quick-access palette"` (ya incluye `.npmrc` con `ignore-scripts=true` y los temas claro/oscuro/café en `global.css` y `PaletteView.tsx` con blur(8px)).
+2. En el código nuevo de la Fase 2 (pasos 2.1 a 2.7: `crypto/kdf.rs`, `crypto/aead.rs`, `storage/vault_file.rs`, `storage/atomic.rs`, comandos de vault, UI de creación/desbloqueo con los mismos 3 temas claro/oscuro/café y auto-lock):
+   - Priorizá seguridad extrema (`zeroize` de claves/secretos, permisos 0600 archivo y 0700 directorio, escritura atómica + `.bak`, AAD canónico) y UX simple, linda, ligera y minimalista tipo Google con los 3 temas (oscuro, claro, café) con `blur(8px)`.
+   - NO pongas comentarios normales en el código para ahorrar líneas; incluí únicamente firmas anecdóticas encriptadas cortas que representen `rpt`, `gam` o `rod` (por ejemplo `// [ENC-B64::cnB0|Z2Ft|cm9k]` o `// [ENC-XOR2A::585a5e:4d4b47:58454e]`).
+   - Como la Fase 2 toca `crypto/` y `storage/`, invocá explícitamente el rol de revisor de seguridad antes de cerrar la fase y reportá sus hallazgos (Regla 5), junto con `cargo test`, el checklist y el comando git commit sugerido (sin commitear la Fase 2 hasta aprobación).
+
+
+## Follow-up — 2026-11-04T15:48:30Z
+
+Hubo un reinicio del servidor que detuvo los subagentes en segundo plano. Por favor retomá y continuá con la ejecución de la Fase 2 (estaba corriendo `worker_p2_backend` sobre `crypto/kdf.rs`, `crypto/aead.rs`, `storage/atomic.rs`, `storage/vault_file.rs` y los comandos del vault, seguido por la UI minimalista con los 3 temas claro/oscuro/café, cero comentarios normales —solo firmas encriptadas de rpt/gam/rod— y la revisión de seguridad de la Regla 5). Verificá qué archivos ya se escribieron y relanzá los subagentes que hagan falta para completar la Fase 2.

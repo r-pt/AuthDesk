@@ -1,11 +1,11 @@
-//! AuthDesk - Gestor de códigos TOTP de escritorio para Linux
-//! Arquitectura de seguridad, ciclo de vida de ventana, tray icon, atajos globales y motor TOTP.
-
+// [ENC-B64::cnB0|Z2Ft|cm9k]
+pub mod crypto;
 pub mod error;
 pub mod models;
 pub mod otp;
 pub mod shortcut;
 pub mod state;
+pub mod storage;
 pub mod tray;
 pub mod vault;
 
@@ -21,7 +21,10 @@ extern crate thiserror;
 extern crate zeroize;
 
 pub use error::AuthDeskError;
-pub use models::{Account, AccountCodeDto, AccountSummaryDto, AccountType, Algorithm};
+pub use models::{
+    Account, AccountCodeDto, AccountSummaryDto, AccountType, AddAccountDto, Algorithm,
+    VaultStatusDto,
+};
 pub use state::AppState;
 
 use std::io::{BufRead, BufReader, Write};
@@ -32,24 +35,71 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
-/// Identificador único de aplicación para sockets IPC y single-instance
 pub const APP_IDENTIFIER: &str = "com.rod.authdesk";
 pub const SOCKET_NAME: &str = "authdesk_com_rod_authdesk.sock";
 
-/// Comando IPC de Tauri: devuelve la lista de códigos TOTP actuales con tiempo restante.
-/// Invariante de seguridad: El frontend nunca recibe claves secretas ni contraseñas.
 #[tauri::command]
 pub fn current_codes(state: tauri::State<'_, AppState>) -> Result<Vec<AccountCodeDto>, String> {
     state.get_current_codes().map_err(|e| e.to_string())
 }
 
-/// Función auxiliar para invocación directa del estado sin depender de la runtime de Tauri
-/// (usada en pruebas unitarias, oráculos y CLI).
+#[tauri::command]
+pub fn get_vault_status(state: tauri::State<'_, AppState>) -> VaultStatusDto {
+    state.get_vault_status()
+}
+
+use zeroize::Zeroize;
+
+#[tauri::command]
+pub fn init_vault(mut password: String, state: tauri::State<'_, AppState>) -> Result<(), String> {
+    let res = state.init_vault(&password).map_err(|e| e.to_string());
+    password.zeroize();
+    res
+}
+
+#[tauri::command]
+pub fn unlock_vault(mut password: String, state: tauri::State<'_, AppState>) -> Result<(), String> {
+    let res = state.unlock_vault(&password).map_err(|e| e.to_string());
+    password.zeroize();
+    res
+}
+
+#[tauri::command]
+pub fn lock_vault(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    state.lock_vault().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn hide_window() -> Result<(), String> {
+    log::info!("Comando hide_window invocado.");
+    Ok(())
+}
+
+#[tauri::command]
+pub fn list_accounts(state: tauri::State<'_, AppState>) -> Result<Vec<AccountSummaryDto>, String> {
+    state.list_account_summaries().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn add_account(
+    req: AddAccountDto,
+    state: tauri::State<'_, AppState>,
+) -> Result<AccountSummaryDto, String> {
+    state.add_account_dto(req).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn delete_account(
+    account_id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<bool, String> {
+    state.delete_account(&account_id).map_err(|e| e.to_string())
+}
+
 pub fn get_current_codes_from_state(state: &AppState) -> Result<Vec<AccountCodeDto>, AuthDeskError> {
     state.get_current_codes()
 }
 
-/// Obtiene la ruta del socket Unix para IPC single-instance
 pub fn get_socket_path() -> PathBuf {
     if let Ok(runtime_dir) = std::env::var("XDG_RUNTIME_DIR") {
         let dir = Path::new(&runtime_dir);
@@ -60,7 +110,6 @@ pub fn get_socket_path() -> PathBuf {
     PathBuf::from("/tmp").join(SOCKET_NAME)
 }
 
-/// Estado de la ventana y de la aplicación en memoria
 #[derive(Debug, Clone)]
 pub struct AppWindowState {
     pub visible: bool,
@@ -86,21 +135,18 @@ impl Default for AppWindowState {
     }
 }
 
-/// Oculta la ventana de la paleta
-pub fn hide_window(state: &Arc<std::sync::Mutex<AppWindowState>>) {
+pub fn hide_window_state(state: &Arc<std::sync::Mutex<AppWindowState>>) {
     let mut s = state.lock().unwrap();
     s.visible = false;
     log::info!("Ventana paleta oculta.");
 }
 
-/// Muestra y enfoca la ventana de la paleta
 pub fn show_window(state: &Arc<std::sync::Mutex<AppWindowState>>) {
     let mut s = state.lock().unwrap();
     s.visible = true;
     log::info!("Ventana paleta visible y enfocada.");
 }
 
-/// Conmuta la visibilidad de la ventana de la paleta
 pub fn toggle_window(state: &Arc<std::sync::Mutex<AppWindowState>>) -> bool {
     let mut s = state.lock().unwrap();
     s.visible = !s.visible;
@@ -109,7 +155,6 @@ pub fn toggle_window(state: &Arc<std::sync::Mutex<AppWindowState>>) -> bool {
     new_state
 }
 
-/// Envía señal de conmutación a la instancia primaria en ejecución mediante socket Unix
 pub fn send_toggle_to_primary() -> Result<(), String> {
     let socket_path = get_socket_path();
     let mut stream = UnixStream::connect(&socket_path)
@@ -130,14 +175,12 @@ pub fn send_toggle_to_primary() -> Result<(), String> {
     Ok(())
 }
 
-/// Inicia el listener IPC de instancia única en un hilo en segundo plano
 pub fn start_single_instance_listener(
     state: Arc<std::sync::Mutex<AppWindowState>>,
     running: Arc<AtomicBool>,
 ) -> Result<PathBuf, String> {
     let socket_path = get_socket_path();
 
-    // Limpiar socket huérfano si la instancia anterior terminó inesperadamente
     if socket_path.exists() {
         if UnixStream::connect(&socket_path).is_ok() {
             return Err("Ya existe una instancia primaria en ejecución.".to_string());
@@ -167,7 +210,7 @@ pub fn start_single_instance_listener(
                             let mut writer = stream;
                             let _ = write!(writer, "ACK toggle:{}\n", is_vis);
                         } else if cmd == "--hide" || cmd == "hide" {
-                            hide_window(&state);
+                            hide_window_state(&state);
                             let mut writer = stream;
                             let _ = write!(writer, "ACK hidden\n");
                         } else {
@@ -227,13 +270,18 @@ mod tests {
         show_window(&state);
         assert!(state.lock().unwrap().visible);
 
-        hide_window(&state);
+        hide_window_state(&state);
         assert!(!state.lock().unwrap().visible);
     }
 
     #[test]
+    fn test_hide_window_command() {
+        assert!(hide_window().is_ok());
+    }
+
+    #[test]
     fn test_current_codes_command() {
-        let app_state = AppState::new();
+        let app_state = AppState::with_accounts(AppState::default_test_accounts());
         let state_wrapper = tauri::State(&app_state);
 
         let result = current_codes(state_wrapper).unwrap();
@@ -248,8 +296,15 @@ mod tests {
     }
 
     #[test]
-    fn test_current_codes_from_state() {
+    fn test_current_codes_command_locked_errors() {
         let app_state = AppState::new();
+        let state_wrapper = tauri::State(&app_state);
+        assert!(current_codes(state_wrapper).is_err());
+    }
+
+    #[test]
+    fn test_current_codes_from_state() {
+        let app_state = AppState::with_accounts(AppState::default_test_accounts());
         let codes = get_current_codes_from_state(&app_state).unwrap();
         assert_eq!(codes.len(), app_state.accounts.read().unwrap().len());
     }

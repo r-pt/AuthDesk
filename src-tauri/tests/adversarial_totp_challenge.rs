@@ -344,7 +344,7 @@ fn test_period_comparison_30s_vs_60s() {
 
 #[test]
 fn test_default_test_accounts_totp_parity() {
-    let state = AppState::new();
+    let state = AppState::with_accounts(AppState::default_test_accounts());
 
     // Accounts defined in default_test_accounts:
     // 1. GitHub: "JBSWY3DPEHPK3PXP", Sha1, 6d, 30s

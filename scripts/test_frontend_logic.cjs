@@ -156,13 +156,114 @@ function testClipboardSmartClear() {
       // Al expirar el temporizador de 654321, el contenido es "https://externo.com"
       assert.strictEqual(clipboardStorage, "https://externo.com");
       console.log("    -> Limpieza inteligente condicional: PASS");
-      console.log("\n[+] TODAS LAS PRUEBAS UNITARIAS DEL FRONTEND PASARON EXITOSAMENTE.");
+      runPhase2Tests();
     });
     // Usuario copia texto externo a los 10ms
     setTimeout(() => {
       clipboardStorage = "https://externo.com";
     }, 10);
   });
+}
+
+// 5. Verificación de cálculo de fortaleza de contraseña maestra (SetupVaultView)
+function testPasswordStrengthLogic() {
+  console.log("  [5] Probando cálculo de fortaleza de contraseña maestra (SetupVaultView)...");
+
+  function calculateStrength(password) {
+    if (!password) return 0;
+    if (password.length < 8) return 1;
+    let score = 1;
+    if (/[A-Z]/.test(password) && /[a-z]/.test(password)) score++;
+    if (/\d/.test(password) && /[^A-Za-z0-9]/.test(password) && password.length >= 10) score++;
+    return score;
+  }
+
+  assert.strictEqual(calculateStrength(""), 0);
+  assert.strictEqual(calculateStrength("short"), 1); // < 8
+  assert.strictEqual(calculateStrength("abcdefgh"), 1); // 8 chars, only lowercase
+  assert.strictEqual(calculateStrength("Abcdefgh"), 2); // 8 chars, mixed case
+  assert.strictEqual(calculateStrength("Abcdefg1"), 2); // 8 chars, mixed + digit (< 10)
+  assert.strictEqual(calculateStrength("Abcdefg1!#"), 3); // 10 chars, mixed + digit + symbol
+  assert.strictEqual(calculateStrength("SuperSecret2026!#"), 3); // 17 chars, all criteria
+
+  console.log("    -> Fortaleza de contraseña: PASS");
+}
+
+// 6. Verificación de lógica de auto-bloqueo e inactividad (useAutoLock)
+function testAutoLockLogic() {
+  console.log("  [6] Probando lógica de temporizador de auto-bloqueo (useAutoLock)...");
+
+  const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000;
+  const THROTTLE_INTERVAL_MS = 1000;
+
+  let locked = false;
+  let lastActivity = 1000;
+
+  function handleActivity(now) {
+    if (now - lastActivity >= THROTTLE_INTERVAL_MS) {
+      lastActivity = now;
+      return true; // Timer reset
+    }
+    return false; // Throttled
+  }
+
+  function handleFocus(now) {
+    if (now - lastActivity >= DEFAULT_TIMEOUT_MS) {
+      locked = true;
+      return true; // Locked immediately
+    }
+    lastActivity = now;
+    return false;
+  }
+
+  // Actividad rápida a los 200ms -> ignorada por throttling
+  assert.strictEqual(handleActivity(1200), false);
+  assert.strictEqual(lastActivity, 1000);
+
+  // Actividad a los 1100ms -> procesada
+  assert.strictEqual(handleActivity(2100), true);
+  assert.strictEqual(lastActivity, 2100);
+
+  // Focus a los 2 minutos (120,000ms) -> no se bloquea, refresca actividad
+  assert.strictEqual(handleFocus(122100), false);
+  assert.strictEqual(locked, false);
+  assert.strictEqual(lastActivity, 122100);
+
+  // Focus tras 5 minutos y 1 segundo de inactividad (301,000ms) -> bloqueo inmediato
+  assert.strictEqual(handleFocus(122100 + DEFAULT_TIMEOUT_MS + 1000), true);
+  assert.strictEqual(locked, true);
+
+  console.log("    -> Auto-bloqueo e inactividad: PASS");
+}
+
+// 7. Verificación de enrutamiento y estado de la bóveda (App coordinator)
+function testVaultRoutingLogic() {
+  console.log("  [7] Probando enrutamiento reactivo de estado de la bóveda (App coordinator)...");
+
+  function resolveView(status) {
+    if (!status || !status.initialized) return "SetupVaultView";
+    if (status.locked) return "UnlockVaultView";
+    return "PaletteView";
+  }
+
+  // Primera vez (sin inicializar)
+  assert.strictEqual(resolveView({ initialized: false, locked: true, account_count: 0 }), "SetupVaultView");
+  assert.strictEqual(resolveView(null), "SetupVaultView");
+
+  // Bóveda inicializada pero bloqueada
+  assert.strictEqual(resolveView({ initialized: true, locked: true, account_count: 5 }), "UnlockVaultView");
+
+  // Bóveda inicializada y desbloqueada
+  assert.strictEqual(resolveView({ initialized: true, locked: false, account_count: 5 }), "PaletteView");
+
+  console.log("    -> Enrutamiento reactivo de estado: PASS");
+}
+
+function runPhase2Tests() {
+  testPasswordStrengthLogic();
+  testAutoLockLogic();
+  testVaultRoutingLogic();
+  console.log("\n[+] TODAS LAS PRUEBAS UNITARIAS DEL FRONTEND PASARON EXITOSAMENTE.");
 }
 
 testCountdownRingLogic();

@@ -4,13 +4,25 @@ import { useTotpCodes } from "../hooks/useTotpCodes";
 import { useClipboard } from "../hooks/useClipboard";
 import { AccountItem } from "./AccountItem";
 import { getTranslation, Language } from "../i18n";
+import { ThemeMode } from "../types";
 
-const THEMES = ["dark", "light", "coffee"] as const;
-type ThemeMode = (typeof THEMES)[number];
+export interface PaletteViewProps {
+  theme?: ThemeMode;
+  lang?: Language;
+  onCycleTheme?: () => void;
+  onLock?: () => void;
+}
 
-export const PaletteView: React.FC = () => {
-  const [lang] = useState<Language>("es");
-  const [theme, setTheme] = useState<ThemeMode>("dark");
+export const PaletteView: React.FC<PaletteViewProps> = ({
+  theme: propTheme,
+  lang: propLang,
+  onCycleTheme,
+  onLock,
+}) => {
+  const [internalLang] = useState<Language>("es");
+  const [internalTheme, setInternalTheme] = useState<ThemeMode>("dark");
+  const lang = propLang ?? internalLang;
+  const theme = propTheme ?? internalTheme;
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -21,7 +33,12 @@ export const PaletteView: React.FC = () => {
   const { copyCode } = useClipboard();
 
   const cycleTheme = () => {
-    setTheme((prev) => THEMES[(THEMES.indexOf(prev) + 1) % THEMES.length]);
+    if (onCycleTheme) {
+      onCycleTheme();
+    } else {
+      const themes: ThemeMode[] = ["dark", "light", "coffee"];
+      setInternalTheme((prev) => themes[(themes.indexOf(prev) + 1) % themes.length]);
+    }
   };
 
   const filteredAccounts = useMemo(() => {
@@ -133,7 +150,10 @@ export const PaletteView: React.FC = () => {
   }, [selectedIndex]);
 
   return (
-    <div className="palette-container" data-theme={theme}>
+    <div
+      className={propTheme !== undefined ? "palette-view-shell" : "palette-container"}
+      data-theme={propTheme !== undefined ? undefined : theme}
+    >
       <div className="search-header">
         <input
           ref={searchInputRef}
@@ -143,6 +163,17 @@ export const PaletteView: React.FC = () => {
           value={searchQuery}
           onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
         />
+        {onLock && (
+          <button
+            type="button"
+            className="theme-toggle"
+            onClick={onLock}
+            title={t.trayLock}
+            aria-label="Lock"
+          >
+            🔒
+          </button>
+        )}
         <button
           type="button"
           className="theme-toggle"

@@ -14,3 +14,11 @@ export interface AccountCodeDto {
 }
 
 export type Language = "es" | "en";
+
+export type ThemeMode = "dark" | "light" | "coffee";
+
+export interface VaultStatusDto {
+  initialized: boolean;
+  locked: boolean;
+  account_count: number;
+}
