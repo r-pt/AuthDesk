@@ -35,53 +35,58 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::Manager;
+use zeroize::Zeroize;
+
 pub const APP_IDENTIFIER: &str = "com.rod.authdesk";
 pub const SOCKET_NAME: &str = "authdesk_com_rod_authdesk.sock";
 
 #[tauri::command]
-pub fn current_codes(state: tauri::State<'_, AppState>) -> Result<Vec<AccountCodeDto>, String> {
+fn current_codes(state: tauri::State<'_, AppState>) -> Result<Vec<AccountCodeDto>, String> {
     state.get_current_codes().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn get_vault_status(state: tauri::State<'_, AppState>) -> VaultStatusDto {
+fn get_vault_status(state: tauri::State<'_, AppState>) -> VaultStatusDto {
     state.get_vault_status()
 }
 
-use zeroize::Zeroize;
-
 #[tauri::command]
-pub fn init_vault(mut password: String, state: tauri::State<'_, AppState>) -> Result<(), String> {
+fn init_vault(mut password: String, state: tauri::State<'_, AppState>) -> Result<(), String> {
     let res = state.init_vault(&password).map_err(|e| e.to_string());
     password.zeroize();
     res
 }
 
 #[tauri::command]
-pub fn unlock_vault(mut password: String, state: tauri::State<'_, AppState>) -> Result<(), String> {
+fn unlock_vault(mut password: String, state: tauri::State<'_, AppState>) -> Result<(), String> {
     let res = state.unlock_vault(&password).map_err(|e| e.to_string());
     password.zeroize();
     res
 }
 
 #[tauri::command]
-pub fn lock_vault(state: tauri::State<'_, AppState>) -> Result<(), String> {
+fn lock_vault(state: tauri::State<'_, AppState>) -> Result<(), String> {
     state.lock_vault().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn hide_window() -> Result<(), String> {
-    log::info!("Comando hide_window invocado.");
+fn hide_window(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window("palette") {
+        let _ = win.hide();
+    }
     Ok(())
 }
 
 #[tauri::command]
-pub fn list_accounts(state: tauri::State<'_, AppState>) -> Result<Vec<AccountSummaryDto>, String> {
+fn list_accounts(state: tauri::State<'_, AppState>) -> Result<Vec<AccountSummaryDto>, String> {
     state.list_account_summaries().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn add_account(
+fn add_account(
     req: AddAccountDto,
     state: tauri::State<'_, AppState>,
 ) -> Result<AccountSummaryDto, String> {
@@ -89,11 +94,101 @@ pub fn add_account(
 }
 
 #[tauri::command]
-pub fn delete_account(
+fn delete_account(
     account_id: String,
     state: tauri::State<'_, AppState>,
 ) -> Result<bool, String> {
     state.delete_account(&account_id).map_err(|e| e.to_string())
+}
+
+pub fn toggle_palette_window(app: &tauri::AppHandle) {
+    if let Some(win) = app.get_webview_window("palette") {
+        if win.is_visible().unwrap_or(false) {
+            let _ = win.hide();
+        } else {
+            let _ = win.show();
+            let _ = win.set_focus();
+        }
+    }
+}
+
+pub fn run() {
+    let start_hidden = std::env::args().any(|a| a == "--hidden");
+    tauri::Builder::default()
+        .manage(AppState::new())
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            if argv.iter().any(|a| a == "--toggle") {
+                toggle_palette_window(app);
+            } else if let Some(win) = app.get_webview_window("palette") {
+                let _ = win.show();
+                let _ = win.set_focus();
+            }
+        }))
+        .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec!["--hidden"]),
+        ))
+        .setup(move |app| {
+            let _ = shortcut::register_global_shortcut();
+            let show_i = MenuItem::with_id(app, "show", tray::TRAY_SHOW_LABEL, true, None::<&str>)?;
+            let lock_i = MenuItem::with_id(app, "lock", tray::TRAY_LOCK_LABEL, true, None::<&str>)?;
+            let quit_i = MenuItem::with_id(app, "quit", tray::TRAY_QUIT_LABEL, true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&show_i, &lock_i, &quit_i])?;
+            let _tray = TrayIconBuilder::new()
+                .menu(&menu)
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "show" => {
+                        if let Some(w) = app.get_webview_window("palette") {
+                            let _ = w.show();
+                            let _ = w.set_focus();
+                        }
+                    }
+                    "lock" => {
+                        let state = app.state::<AppState>();
+                        let _ = state.lock_vault();
+                    }
+                    "quit" => {
+                        let state = app.state::<AppState>();
+                        let _ = state.lock_vault();
+                        app.exit(0);
+                    }
+                    _ => {}
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        toggle_palette_window(tray.app_handle());
+                    }
+                })
+                .build(app)?;
+
+            if !start_hidden {
+                if let Some(w) = app.get_webview_window("palette") {
+                    let _ = w.show();
+                    let _ = w.set_focus();
+                }
+            }
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            current_codes,
+            get_vault_status,
+            init_vault,
+            unlock_vault,
+            lock_vault,
+            hide_window,
+            list_accounts,
+            add_account,
+            delete_account
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
 }
 
 pub fn get_current_codes_from_state(state: &AppState) -> Result<Vec<AccountCodeDto>, AuthDeskError> {
@@ -275,16 +370,10 @@ mod tests {
     }
 
     #[test]
-    fn test_hide_window_command() {
-        assert!(hide_window().is_ok());
-    }
-
-    #[test]
     fn test_current_codes_command() {
         let app_state = AppState::with_accounts(AppState::default_test_accounts());
-        let state_wrapper = tauri::State(&app_state);
 
-        let result = current_codes(state_wrapper).unwrap();
+        let result = app_state.get_current_codes().unwrap();
         assert!(result.len() >= 4, "Debe retornar al menos 4 códigos");
 
         for code_dto in result {
@@ -298,8 +387,7 @@ mod tests {
     #[test]
     fn test_current_codes_command_locked_errors() {
         let app_state = AppState::new();
-        let state_wrapper = tauri::State(&app_state);
-        assert!(current_codes(state_wrapper).is_err());
+        assert!(app_state.get_current_codes().is_err());
     }
 
     #[test]

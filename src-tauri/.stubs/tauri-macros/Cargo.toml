@@ -1,7 +1,0 @@
-[package]
-name = "tauri-macros"
-version = "2.12.5"
-edition = "2021"
-
-[lib]
-proc-macro = true
