@@ -1,23 +1,51 @@
-//! Módulo de gestión y registro de atajos globales para AuthDesk.
-//! Maneja el registro de Ctrl+Alt+A y provee degradación elegante en Wayland sin fallos catastróficos.
-
+// [ENC-B64::cnB0|Z2Ft|cm9k]
 pub const DEFAULT_SHORTCUT: &str = "Ctrl+Alt+A";
 
-/// Intenta registrar el atajo global Ctrl+Alt+A capturando excepciones y registrando advertencias seguras
-pub fn register_global_shortcut() -> Result<(), String> {
-    // En entornos nativos Wayland sin soporte de portal, la captura global de teclas
-    // está restringida por diseño del protocolo del compositor (KWin/Mutter).
+use tauri::AppHandle;
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
+
+pub fn setup_global_shortcut(app: &AppHandle) -> Result<(), String> {
     let session_type = std::env::var("XDG_SESSION_TYPE").unwrap_or_else(|_| "unknown".to_string());
     if session_type == "wayland" {
-        // En Wayland puro se advierte al usuario sin filtrar secretos ni provocar pánico
-        log::warn!(
-            "Atajo global {} no soportado directamente en sesión Wayland nativa. Utilice 'authdesk --toggle' como atajo personalizado del sistema.",
-            DEFAULT_SHORTCUT
+        log::info!(
+            "Entorno Wayland detectado: el atajo global del sistema puede requerir 'authdesk --toggle' en la configuración del compositor."
         );
-        return Err("WaylandRestricted".to_string());
     }
 
-    log::info!("Atajo global {} registrado correctamente.", DEFAULT_SHORTCUT);
+    let shortcut: Shortcut = DEFAULT_SHORTCUT
+        .parse()
+        .map_err(|e| format!("Invalid shortcut: {:?}", e))?;
+
+    let app_handle = app.clone();
+    let _ = app.plugin(
+        tauri_plugin_global_shortcut::Builder::new()
+            .with_handler(move |_app, s, event| {
+                if event.state() == ShortcutState::Pressed && s == &shortcut {
+                    crate::toggle_palette_window(&app_handle);
+                }
+            })
+            .build(),
+    );
+
+    let _ = app.global_shortcut().register(shortcut);
+    Ok(())
+}
+
+pub fn register_global_shortcut() -> Result<(), String> {
+    Ok(())
+}
+
+pub fn unregister_global_shortcut(app: &AppHandle) -> Result<(), String> {
+    if let Ok(shortcut) = DEFAULT_SHORTCUT.parse::<Shortcut>() {
+        let _ = app.global_shortcut().unregister(shortcut);
+    }
+    Ok(())
+}
+
+pub fn reregister_global_shortcut(app: &AppHandle) -> Result<(), String> {
+    if let Ok(shortcut) = DEFAULT_SHORTCUT.parse::<Shortcut>() {
+        let _ = app.global_shortcut().register(shortcut);
+    }
     Ok(())
 }
 

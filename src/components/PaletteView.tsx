@@ -47,6 +47,10 @@ export const PaletteView: React.FC<PaletteViewProps> = ({
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
+  const [shortcutEnabled, setShortcutEnabled] = useState<boolean>(() => {
+    const saved = localStorage.getItem("authdesk_global_shortcut");
+    return saved !== null ? saved === "true" : true;
+  });
   const [maskCodes, setMaskCodes] = useState<boolean>(() => {
     return localStorage.getItem("authdesk_mask_codes") === "true";
   });
@@ -257,6 +261,18 @@ export const PaletteView: React.FC<PaletteViewProps> = ({
     }
   };
 
+  const handleToggleShortcut = async () => {
+    const nextState = !shortcutEnabled;
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      await invoke("toggle_global_shortcut", { enabled: nextState });
+      setShortcutEnabled(nextState);
+      localStorage.setItem("authdesk_global_shortcut", String(nextState));
+    } catch (err) {
+      console.error("Failed to toggle global shortcut:", err);
+    }
+  };
+
   const handleDisablePin = async () => {
     try {
       const { invoke } = await import("@tauri-apps/api/core");
@@ -276,7 +292,7 @@ export const PaletteView: React.FC<PaletteViewProps> = ({
       className={propTheme !== undefined ? "palette-view-shell" : "palette-container"}
       data-theme={propTheme !== undefined ? undefined : theme}
     >
-      <div className="search-header">
+      <div className="search-header" data-tauri-drag-region>
         <BrandLogo size={26} />
         <input
           ref={searchInputRef}
@@ -512,6 +528,26 @@ export const PaletteView: React.FC<PaletteViewProps> = ({
                   {pinFeedback}
                 </div>
               )}
+            </div>
+
+            <div className="settings-card" style={{ marginTop: "12px" }}>
+              <div style={{ fontWeight: 600, fontSize: "13px" }}>{t.shortcutSettingsTitle}</div>
+              <div style={{ fontSize: "12px", color: "var(--text-secondary)", marginTop: "4px" }}>
+                {shortcutEnabled ? t.shortcutEnabledDesc : t.shortcutDisabledDesc}
+              </div>
+              <div style={{ fontSize: "11px", color: "var(--text-secondary)", marginTop: "4px", opacity: 0.85 }}>
+                {t.shortcutWaylandNote}
+              </div>
+              <div style={{ marginTop: "8px" }}>
+                <button
+                  type="button"
+                  className={shortcutEnabled ? "header-pill-btn" : "primary-action-btn"}
+                  style={{ width: "auto", padding: "6px 12px", fontSize: "12px" }}
+                  onClick={handleToggleShortcut}
+                >
+                  {shortcutEnabled ? t.disableShortcutButton : t.enableShortcutButton}
+                </button>
+              </div>
             </div>
           </div>
         </div>

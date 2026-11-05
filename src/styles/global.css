@@ -1,9 +1,9 @@
 /* [ENC-B64::cnB0|Z2Ft|cm9k] */
 
 :root, [data-theme="dark"] {
-  --bg-surface: rgba(44, 46, 51, 0.94);
-  --bg-card: rgba(58, 61, 66, 0.55);
-  --bg-card-hover: rgba(58, 61, 66, 0.85);
+  --bg-surface: #2C2E33;
+  --bg-card: #3A3D42;
+  --bg-card-hover: #484B52;
   --accent: #FFC82C;
   --accent-soft: rgba(255, 200, 44, 0.16);
   --text-primary: #F9FAFB;
@@ -12,9 +12,9 @@
 }
 
 [data-theme="light"] {
-  --bg-surface: rgba(249, 250, 251, 0.95);
-  --bg-card: rgba(58, 61, 66, 0.05);
-  --bg-card-hover: rgba(58, 61, 66, 0.1);
+  --bg-surface: #F9FAFB;
+  --bg-card: #ECEEF1;
+  --bg-card-hover: #E2E5E9;
   --accent: #FFC82C;
   --accent-soft: rgba(255, 200, 44, 0.18);
   --text-primary: #2C2E33;
@@ -23,9 +23,9 @@
 }
 
 [data-theme="coffee"] {
-  --bg-surface: rgba(40, 37, 34, 0.94);
-  --bg-card: rgba(68, 60, 53, 0.5);
-  --bg-card-hover: rgba(68, 60, 53, 0.8);
+  --bg-surface: #282522;
+  --bg-card: #3D3732;
+  --bg-card-hover: #4C453E;
   --accent: #FFC82C;
   --accent-soft: rgba(255, 200, 44, 0.18);
   --text-primary: #F9FAFB;
@@ -43,7 +43,10 @@ html, body {
   overflow: hidden;
   user-select: none;
   -webkit-user-select: none;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-family: "Adwaita Sans", "Inter", "Cantarell", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
   color: var(--text-primary);
 }
 
@@ -62,8 +65,6 @@ html, body {
   height: 560px;
   box-sizing: border-box;
   background: var(--bg-surface);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
   border: 1px solid var(--border-subtle);
   border-radius: 16px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
@@ -78,6 +79,15 @@ html, body {
   display: flex;
   align-items: center;
   gap: 8px;
+  user-select: none;
+}
+
+[data-tauri-drag-region] {
+  cursor: grab;
+}
+
+[data-tauri-drag-region]:active {
+  cursor: grabbing;
 }
 
 .search-input {

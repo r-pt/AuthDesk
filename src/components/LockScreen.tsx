@@ -72,7 +72,7 @@ export const LockScreen: React.FC<LockScreenProps> = ({
 
   return (
     <div className="lock-screen-shell">
-      <div className="lock-screen-topbar">
+      <div className="lock-screen-topbar" data-tauri-drag-region>
         <div className="brand-mark" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <BrandLogo size={22} />
           <span>AuthDesk</span>

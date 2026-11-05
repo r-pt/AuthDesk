@@ -88,4 +88,10 @@ export const en = {
   secretRequired: "Base32 secret key is required.",
   clearSearchToReorder: "Clear search to reorder.",
   defaultLabel: "default",
+  shortcutSettingsTitle: "Global Keyboard Shortcut",
+  shortcutEnabledDesc: "Press Ctrl+Alt+A to instantly open or hide AuthDesk.",
+  shortcutDisabledDesc: "Global shortcut is currently disabled.",
+  shortcutWaylandNote: "On Wayland you can bind 'authdesk --toggle' in your desktop settings.",
+  enableShortcutButton: "Enable shortcut",
+  disableShortcutButton: "Disable shortcut",
 };

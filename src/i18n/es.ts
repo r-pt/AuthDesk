@@ -88,4 +88,10 @@ export const es = {
   secretRequired: "La clave secreta Base32 es obligatoria.",
   clearSearchToReorder: "Borra la búsqueda para reordenar.",
   defaultLabel: "predeterminado",
+  shortcutSettingsTitle: "Atajo Global de Teclado",
+  shortcutEnabledDesc: "Presiona Ctrl+Alt+A para abrir o cerrar AuthDesk al instante.",
+  shortcutDisabledDesc: "El atajo global está desactivado.",
+  shortcutWaylandNote: "En Wayland puedes usar 'authdesk --toggle' en los atajos de tu sistema.",
+  enableShortcutButton: "Activar atajo",
+  disableShortcutButton: "Desactivar atajo",
 };

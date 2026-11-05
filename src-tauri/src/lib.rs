@@ -137,6 +137,17 @@ fn reorder_accounts(
     state.reorder_accounts(account_ids).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn toggle_global_shortcut(enabled: bool, app: tauri::AppHandle) -> Result<bool, String> {
+    if enabled {
+        let _ = shortcut::reregister_global_shortcut(&app);
+        Ok(true)
+    } else {
+        let _ = shortcut::unregister_global_shortcut(&app);
+        Ok(false)
+    }
+}
+
 pub fn toggle_palette_window(app: &tauri::AppHandle) {
     if let Some(win) = app.get_webview_window("palette") {
         if win.is_visible().unwrap_or(false) {
@@ -167,7 +178,7 @@ pub fn run() {
             Some(vec!["--hidden"]),
         ))
         .setup(move |app| {
-            let _ = shortcut::register_global_shortcut();
+            let _ = shortcut::setup_global_shortcut(app.handle());
             let show_i = MenuItem::with_id(app, "show", tray::TRAY_SHOW_LABEL, true, None::<&str>)?;
             let lock_i = MenuItem::with_id(app, "lock", tray::TRAY_LOCK_LABEL, true, None::<&str>)?;
             let quit_i = MenuItem::with_id(app, "quit", tray::TRAY_QUIT_LABEL, true, None::<&str>)?;
@@ -227,7 +238,8 @@ pub fn run() {
             add_account,
             delete_account,
             update_account,
-            reorder_accounts
+            reorder_accounts,
+            toggle_global_shortcut
         ])
 
         .run(tauri::generate_context!())
