@@ -1,9 +1,9 @@
 <div align="center">
-  <img src="public/logo.svg" alt="AuthDesk Logo" width="96" height="96" />
+  <img src="public/sinfondo.png" alt="AuthDesk Logo" width="96" height="96" />
   <h1>AuthDesk</h1>
   <p><strong>Fast, Zero-Network Desktop TOTP Authenticator for Linux</strong></p>
   <p>
-    <img src="https://img.shields.io/badge/version-0.1.0-FFC82C?style=flat-square&labelColor=2C2E33" alt="Version 0.1.0" />
+    <img src="https://img.shields.io/badge/version-0.1.0-FFC82C?style=flat-square&labelColor=2C2E33" alt="Version 0.1.1" />
     <img src="https://img.shields.io/badge/platform-Linux-FFC82C?style=flat-square&labelColor=2C2E33" alt="Platform Linux" />
     <img src="https://img.shields.io/badge/stack-Tauri_v2_%2B_Rust_%2B_React-FFC82C?style=flat-square&labelColor=2C2E33" alt="Stack" />
     <img src="https://img.shields.io/badge/license-MIT-FFC82C?style=flat-square&labelColor=2C2E33" alt="License MIT" />
