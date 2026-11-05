@@ -1,0 +1,37 @@
+[package]
+name = "authdesk"
+version = "0.1.0"
+description = "Secure Linux Desktop TOTP Manager"
+edition = "2021"
+authors = ["Rod <rod@authdesk.local>"]
+license = "MIT"
+
+[lib]
+name = "authdesk_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.0.5", features = [] }
+
+[dependencies]
+tauri = { version = "2.2.0", features = ["tray-icon"] }
+tauri-plugin-single-instance = "2.2.0"
+tauri-plugin-global-shortcut = "2.2.0"
+tauri-plugin-autostart = "2.2.0"
+tauri-plugin-clipboard-manager = "2.2.0"
+tauri-plugin-dialog = "2.2.0"
+serde = { version = "1.0.217", features = ["derive"] }
+serde_json = "1.0.138"
+zeroize = { version = "1.8.1", features = ["derive"] }
+argon2 = "0.5.3"
+chacha20poly1305 = "0.10.1"
+keyring = { version = "3.6.3", features = ["sync-secret-service", "crypto-rust"] }
+rand = "0.8.5"
+sha1 = "0.10.6"
+sha2 = "0.10.8"
+hmac = "0.12.1"
+data-encoding = "2.8.0"
+log = "0.4.25"
+env_logger = "0.11.6"
+thiserror = "2.0.11"
+parking_lot = "0.12.3"

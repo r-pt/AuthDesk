@@ -1,0 +1,40 @@
+# Build and dependencies
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Tauri / Rust build targets
+src-tauri/target/
+target/
+
+# Teamwork agents scratch and metadata (keep plans and requests)
+.agents/teamwork/*
+!.agents/teamwork/plan.md
+!.agents/teamwork/ORIGINAL_REQUEST.md
+
+# Logs and environment
+*.log
+.env
+.env.*
+!.env.example
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+.agents/
+AGENTS.md
+tests/
+scripts/
+src-tauri/tests/
+TEST_INFRA.md
+TEST_READY.md
