@@ -37,7 +37,7 @@ export function useAutoLock({
   }, []);
 
   const resetTimer = useCallback(() => {
-    if (!enabled) return;
+    if (!enabled || timeoutMs <= 0) return;
 
     if (timerRef.current) {
       clearTimeout(timerRef.current);
@@ -49,7 +49,7 @@ export function useAutoLock({
   }, [enabled, timeoutMs, triggerLock]);
 
   useEffect(() => {
-    if (!enabled) {
+    if (!enabled || timeoutMs <= 0) {
       if (timerRef.current) {
         clearTimeout(timerRef.current);
         timerRef.current = null;

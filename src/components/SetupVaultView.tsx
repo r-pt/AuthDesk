@@ -2,6 +2,8 @@
 import React, { useState, useMemo, useRef, useEffect } from "react";
 import { getTranslation, Language } from "../i18n";
 import { BrandLogo } from "./BrandLogo";
+import { DragBar } from "./DragBar";
+import { IconShield } from "./Icons";
 
 interface SetupVaultViewProps {
   lang: Language;
@@ -50,9 +52,24 @@ export const SetupVaultView: React.FC<SetupVaultViewProps> = ({ lang, onSuccess 
     }
   };
 
+  const handleCreatePasswordless = async () => {
+    setIsSubmitting(true);
+    setErrorMessage(null);
+
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      await invoke("create_vault_passwordless");
+      onSuccess();
+    } catch (err: unknown) {
+      setErrorMessage(typeof err === "string" ? err : t.initVaultError);
+      setIsSubmitting(false);
+    }
+  };
+
   return (
     <form className="lock-form-container" onSubmit={handleSubmit}>
-      <div style={{ display: "flex", justifyContent: "center", marginBottom: "12px" }}>
+      <DragBar />
+      <div style={{ display: "flex", justifyContent: "center", marginBottom: "12px", marginTop: "4px" }}>
         <BrandLogo size={48} />
       </div>
 
@@ -106,8 +123,25 @@ export const SetupVaultView: React.FC<SetupVaultViewProps> = ({ lang, onSuccess 
       {errorMessage && <div className="form-error-banner">{errorMessage}</div>}
 
       <button type="submit" className="primary-action-btn" disabled={!canSubmit}>
-        {isSubmitting ? t.creatingVault : t.createVaultButton}
+        {isSubmitting ? t.creatingVault : t.createWithPasswordButton}
       </button>
+
+      <div className="divider-text">
+        <span>{t.orDivider}</span>
+      </div>
+
+      <button
+        type="button"
+        className="secondary-action-btn"
+        onClick={handleCreatePasswordless}
+        disabled={isSubmitting}
+      >
+        <IconShield size={16} />
+        <span>{t.createPasswordlessButton}</span>
+      </button>
+      <p className="form-hint" style={{ textAlign: "center", marginTop: "6px", color: "var(--text-secondary)" }}>
+        {t.passwordlessDesc}
+      </p>
     </form>
   );
 };

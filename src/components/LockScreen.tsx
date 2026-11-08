@@ -4,6 +4,7 @@ import { SetupVaultView } from "./SetupVaultView";
 import { UnlockVaultView } from "./UnlockVaultView";
 import { PinKeypadView } from "./PinKeypadView";
 import { BrandLogo } from "./BrandLogo";
+import { DragBar } from "./DragBar";
 import { IconMoon, IconSun, IconCoffee } from "./Icons";
 import { Language, getTranslation } from "../i18n";
 import { ThemeMode } from "../types";
@@ -72,7 +73,8 @@ export const LockScreen: React.FC<LockScreenProps> = ({
 
   return (
     <div className="lock-screen-shell">
-      <div className="lock-screen-topbar" data-tauri-drag-region>
+      <DragBar />
+      <div className="lock-screen-topbar">
         <div className="brand-mark" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <BrandLogo size={22} />
           <span>AuthDesk</span>

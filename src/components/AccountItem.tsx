@@ -3,6 +3,7 @@ import React from "react";
 import { AccountCodeDto } from "../types";
 import { CountdownRing } from "./CountdownRing";
 import { IconArrowUp, IconArrowDown, IconEdit, IconTrash } from "./Icons";
+import { ServiceIcon } from "./ServiceIcon";
 
 interface AccountItemProps {
   account: AccountCodeDto;
@@ -61,7 +62,7 @@ export const AccountItem: React.FC<AccountItemProps> = ({
     >
       <div className="account-left">
         <div className="account-avatar" aria-hidden="true">
-          {(account.issuer || "?").charAt(0).toUpperCase()}
+          <ServiceIcon issuer={account.issuer} size={18} />
         </div>
         <div className="account-meta">
           <span className="account-issuer">{account.issuer}</span>

@@ -7,11 +7,14 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
+use crate::crypto::aead::MasterKey;
 use crate::error::AuthDeskError;
 
 pub const KEYRING_SERVICE: &str = "authdesk";
 pub const KEYRING_DEVICE_KEY: &str = "device-key";
 pub const KEYRING_PIN_BLOB: &str = "pin-blob";
+pub const KEYRING_PASSWORDLESS_MK: &str = "passwordless-mk";
+pub const PASSWORDLESS_INTERNAL_KEY: &str = "AUTHDESK_PASSWORDLESS_INTERNAL_KEY_V1";
 pub const PIN_AAD: &[u8] = b"AUTHDESK_PIN_MK_V1";
 
 static TEST_MODE: AtomicBool = AtomicBool::new(false);
@@ -102,6 +105,18 @@ pub fn delete_pin_blob() -> Result<(), AuthDeskError> {
 
 pub fn delete_device_key() -> Result<(), AuthDeskError> {
     KeyringStorage::new().delete_device_key()
+}
+
+pub fn get_passwordless_mk() -> Result<Option<MasterKey>, AuthDeskError> {
+    KeyringStorage::new().get_passwordless_mk()
+}
+
+pub fn set_passwordless_mk(mk: &MasterKey) -> Result<(), AuthDeskError> {
+    KeyringStorage::new().set_passwordless_mk(mk)
+}
+
+pub fn delete_passwordless_mk() -> Result<(), AuthDeskError> {
+    KeyringStorage::new().delete_passwordless_mk()
 }
 
 pub fn clear_keyring() -> Result<(), AuthDeskError> {
@@ -266,9 +281,36 @@ impl KeyringStorage {
         self.delete_raw(KEYRING_DEVICE_KEY)
     }
 
+    pub fn get_passwordless_mk(&self) -> Result<Option<MasterKey>, AuthDeskError> {
+        match self.get_raw(KEYRING_PASSWORDLESS_MK)? {
+            Some(b64) => {
+                let bytes = BASE64
+                    .decode(b64.as_bytes())
+                    .map_err(|e| AuthDeskError::Vault(format!("Invalid passwordless MK base64: {}", e)))?;
+                if bytes.len() != 32 {
+                    return Err(AuthDeskError::Vault("Passwordless MK invalid length".to_string()));
+                }
+                let mut key = [0u8; 32];
+                key.copy_from_slice(&bytes);
+                Ok(Some(MasterKey::new(key)))
+            }
+            None => Ok(None),
+        }
+    }
+
+    pub fn set_passwordless_mk(&self, mk: &MasterKey) -> Result<(), AuthDeskError> {
+        let b64 = BASE64.encode(mk.as_bytes());
+        self.set_raw(KEYRING_PASSWORDLESS_MK, &b64)
+    }
+
+    pub fn delete_passwordless_mk(&self) -> Result<(), AuthDeskError> {
+        self.delete_raw(KEYRING_PASSWORDLESS_MK)
+    }
+
     pub fn clear(&self) -> Result<(), AuthDeskError> {
         self.delete_raw(KEYRING_PIN_BLOB)?;
         self.delete_raw(KEYRING_DEVICE_KEY)?;
+        self.delete_raw(KEYRING_PASSWORDLESS_MK)?;
         Ok(())
     }
 }

@@ -6,6 +6,8 @@ import { AccountItem } from "./AccountItem";
 import { AccountFormModal } from "./AccountFormModal";
 import { DeleteConfirmModal } from "./DeleteConfirmModal";
 import { BrandLogo } from "./BrandLogo";
+import { DragBar } from "./DragBar";
+import { SettingsModal } from "./SettingsModal";
 import {
   IconEye,
   IconEyeOff,
@@ -15,7 +17,6 @@ import {
   IconMoon,
   IconSun,
   IconCoffee,
-  IconClose,
 } from "./Icons";
 import { getTranslation, Language } from "../i18n";
 import { ThemeMode, AccountCodeDto } from "../types";
@@ -26,6 +27,8 @@ export interface PaletteViewProps {
   pinAvailable?: boolean;
   pinEnabled?: boolean;
   onCycleTheme?: () => void;
+  onSelectTheme?: (theme: ThemeMode) => void;
+  onSelectLang?: (lang: Language) => void;
   onLock?: () => void;
   onVaultStatusChanged?: () => void;
 }
@@ -36,6 +39,8 @@ export const PaletteView: React.FC<PaletteViewProps> = ({
   pinAvailable,
   pinEnabled,
   onCycleTheme,
+  onSelectTheme,
+  onSelectLang,
   onLock,
   onVaultStatusChanged,
 }) => {
@@ -47,10 +52,6 @@ export const PaletteView: React.FC<PaletteViewProps> = ({
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
-  const [shortcutEnabled, setShortcutEnabled] = useState<boolean>(() => {
-    const saved = localStorage.getItem("authdesk_global_shortcut");
-    return saved !== null ? saved === "true" : true;
-  });
   const [maskCodes, setMaskCodes] = useState<boolean>(() => {
     return localStorage.getItem("authdesk_mask_codes") === "true";
   });
@@ -58,12 +59,6 @@ export const PaletteView: React.FC<PaletteViewProps> = ({
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<AccountCodeDto | null>(null);
   const [deletingAccount, setDeletingAccount] = useState<AccountCodeDto | null>(null);
-
-  const [configuringPin, setConfiguringPin] = useState(false);
-  const [newPin, setNewPin] = useState("");
-  const [confirmPin, setConfirmPin] = useState("");
-  const [pinFeedback, setPinFeedback] = useState<string | null>(null);
-  const [isSavingPin, setIsSavingPin] = useState(false);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const listContainerRef = useRef<HTMLDivElement>(null);
@@ -111,7 +106,6 @@ export const PaletteView: React.FC<PaletteViewProps> = ({
       setIsAddModalOpen(false);
       setEditingAccount(null);
       setDeletingAccount(null);
-      setConfiguringPin(false);
       searchInputRef.current?.focus();
     };
 
@@ -120,6 +114,7 @@ export const PaletteView: React.FC<PaletteViewProps> = ({
   }, []);
 
   const copyAndHide = async (code: string) => {
+    const hideOnCopy = localStorage.getItem("authdesk_hide_on_copy") !== "false";
     if (!code) {
       try {
         const { invoke } = await import("@tauri-apps/api/core");
@@ -134,14 +129,16 @@ export const PaletteView: React.FC<PaletteViewProps> = ({
     }
 
     await copyCode(code);
-    try {
-      const { invoke } = await import("@tauri-apps/api/core");
-      await invoke("hide_window");
-    } catch {
+    if (hideOnCopy) {
       try {
-        const { getCurrentWindow } = await import("@tauri-apps/api/window");
-        await getCurrentWindow().hide();
-      } catch {}
+        const { invoke } = await import("@tauri-apps/api/core");
+        await invoke("hide_window");
+      } catch {
+        try {
+          const { getCurrentWindow } = await import("@tauri-apps/api/window");
+          await getCurrentWindow().hide();
+        } catch {}
+      }
     }
   };
 
@@ -234,65 +231,13 @@ export const PaletteView: React.FC<PaletteViewProps> = ({
     }
   }, [selectedIndex]);
 
-  const handleSavePin = async (e: React.SyntheticEvent) => {
-    e.preventDefault();
-    if (newPin.length !== 6 || !/^\d{6}$/.test(newPin)) {
-      setPinFeedback(t.pinMustBe6Digits);
-      return;
-    }
-    if (newPin !== confirmPin) {
-      setPinFeedback(t.pinMismatch);
-      return;
-    }
-    setIsSavingPin(true);
-    setPinFeedback(null);
-    try {
-      const { invoke } = await import("@tauri-apps/api/core");
-      await invoke("set_pin", { pin: newPin });
-      setNewPin("");
-      setConfirmPin("");
-      setConfiguringPin(false);
-      setPinFeedback(t.pinSavedSuccess);
-      if (onVaultStatusChanged) onVaultStatusChanged();
-    } catch (err) {
-      setPinFeedback(String(err));
-    } finally {
-      setIsSavingPin(false);
-    }
-  };
-
-  const handleToggleShortcut = async () => {
-    const nextState = !shortcutEnabled;
-    try {
-      const { invoke } = await import("@tauri-apps/api/core");
-      await invoke("toggle_global_shortcut", { enabled: nextState });
-      setShortcutEnabled(nextState);
-      localStorage.setItem("authdesk_global_shortcut", String(nextState));
-    } catch (err) {
-      console.error("Failed to toggle global shortcut:", err);
-    }
-  };
-
-  const handleDisablePin = async () => {
-    try {
-      const { invoke } = await import("@tauri-apps/api/core");
-      await invoke("disable_pin");
-      setConfiguringPin(false);
-      setNewPin("");
-      setConfirmPin("");
-      setPinFeedback(t.pinDisabledSuccess);
-      if (onVaultStatusChanged) onVaultStatusChanged();
-    } catch (err) {
-      setPinFeedback(String(err));
-    }
-  };
-
   return (
     <div
       className={propTheme !== undefined ? "palette-view-shell" : "palette-container"}
       data-theme={propTheme !== undefined ? undefined : theme}
     >
-      <div className="search-header" data-tauri-drag-region>
+      <DragBar />
+      <div className="search-header">
         <BrandLogo size={26} />
         <input
           ref={searchInputRef}
@@ -401,157 +346,27 @@ export const PaletteView: React.FC<PaletteViewProps> = ({
         </div>
       </div>
 
-      {showSettings && (
-        <div className="settings-overlay">
-          <div className="settings-header">
-            <div className="brand-mark" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <BrandLogo size={20} />
-              <span>{t.settingsTitle}</span>
-            </div>
-            <button
-              type="button"
-              className="theme-toggle"
-              onClick={() => {
-                setShowSettings(false);
-                setConfiguringPin(false);
-                setPinFeedback(null);
-              }}
-              title={t.closeButton}
-              aria-label={t.closeButton}
-            >
-              <IconClose size={16} />
-            </button>
-          </div>
-          <div className="settings-body">
-            <div className="settings-card">
-              <div style={{ fontWeight: 600, fontSize: "13px" }}>{t.pinSettingsTitle}</div>
-              {!pinAvailable ? (
-                <div className="form-hint" style={{ color: "var(--text-secondary)" }}>
-                  {t.pinNotAvailable}
-                </div>
-              ) : pinEnabled ? (
-                <>
-                  <div style={{ fontSize: "12px", color: "var(--text-secondary)" }}>
-                    {t.pinEnabledDesc}
-                  </div>
-                  <div style={{ display: "flex", gap: "8px", marginTop: "6px" }}>
-                    <button
-                      type="button"
-                      className="header-pill-btn"
-                      onClick={() => setConfiguringPin(true)}
-                    >
-                      {t.changePinButton}
-                    </button>
-                    <button
-                      type="button"
-                      className="header-pill-btn"
-                      style={{ color: "#ef4444" }}
-                      onClick={handleDisablePin}
-                    >
-                      {t.disablePinButton}
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div style={{ fontSize: "12px", color: "var(--text-secondary)" }}>
-                    {t.pinDisabledDesc}
-                  </div>
-                  <div style={{ marginTop: "6px" }}>
-                    <button
-                      type="button"
-                      className="primary-action-btn"
-                      style={{ width: "auto", padding: "8px 14px", fontSize: "12px" }}
-                      onClick={() => setConfiguringPin(true)}
-                    >
-                      {t.setupPinButton}
-                    </button>
-                  </div>
-                </>
-              )}
-
-              {configuringPin && (
-                <form
-                  onSubmit={handleSavePin}
-                  style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "8px" }}
-                >
-                  <input
-                    type="password"
-                    inputMode="numeric"
-                    maxLength={6}
-                    className="form-input"
-                    placeholder={t.newPinPlaceholder}
-                    value={newPin}
-                    onChange={(e) => setNewPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                    autoFocus
-                  />
-                  <input
-                    type="password"
-                    inputMode="numeric"
-                    maxLength={6}
-                    className="form-input"
-                    placeholder={t.confirmPinPlaceholder}
-                    value={confirmPin}
-                    onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                  />
-                  <div style={{ display: "flex", gap: "8px" }}>
-                    <button
-                      type="submit"
-                      className="primary-action-btn"
-                      disabled={isSavingPin || newPin.length !== 6 || confirmPin.length !== 6}
-                    >
-                      {isSavingPin ? "..." : t.savePinButton}
-                    </button>
-                    <button
-                      type="button"
-                      className="header-pill-btn"
-                      onClick={() => {
-                        setConfiguringPin(false);
-                        setNewPin("");
-                        setConfirmPin("");
-                      }}
-                    >
-                      {t.cancelButton}
-                    </button>
-                  </div>
-                </form>
-              )}
-
-              {pinFeedback && (
-                <div
-                  className="form-hint"
-                  style={{
-                    color: pinFeedback.includes("correct") ? "#10b981" : "#ef4444",
-                    fontSize: "11px",
-                  }}
-                >
-                  {pinFeedback}
-                </div>
-              )}
-            </div>
-
-            <div className="settings-card" style={{ marginTop: "12px" }}>
-              <div style={{ fontWeight: 600, fontSize: "13px" }}>{t.shortcutSettingsTitle}</div>
-              <div style={{ fontSize: "12px", color: "var(--text-secondary)", marginTop: "4px" }}>
-                {shortcutEnabled ? t.shortcutEnabledDesc : t.shortcutDisabledDesc}
-              </div>
-              <div style={{ fontSize: "11px", color: "var(--text-secondary)", marginTop: "4px", opacity: 0.85 }}>
-                {t.shortcutWaylandNote}
-              </div>
-              <div style={{ marginTop: "8px" }}>
-                <button
-                  type="button"
-                  className={shortcutEnabled ? "header-pill-btn" : "primary-action-btn"}
-                  style={{ width: "auto", padding: "6px 12px", fontSize: "12px" }}
-                  onClick={handleToggleShortcut}
-                >
-                  {shortcutEnabled ? t.disableShortcutButton : t.enableShortcutButton}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <SettingsModal
+        isOpen={showSettings}
+        onClose={() => setShowSettings(false)}
+        lang={lang}
+        theme={theme}
+        onSelectTheme={(th) => {
+          if (onSelectTheme) onSelectTheme(th);
+          else if (onCycleTheme) onCycleTheme();
+        }}
+        onSelectLang={(lg) => {
+          if (onSelectLang) onSelectLang(lg);
+        }}
+        pinAvailable={pinAvailable ?? false}
+        pinEnabled={pinEnabled ?? false}
+        onVaultStatusChanged={() => {
+          if (onVaultStatusChanged) onVaultStatusChanged();
+        }}
+        onRefreshAccounts={() => {
+          refresh();
+        }}
+      />
 
       <AccountFormModal
         isOpen={isAddModalOpen}

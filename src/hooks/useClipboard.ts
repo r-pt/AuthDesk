@@ -30,28 +30,33 @@ export function useClipboard() {
       activeTimerRef.current = null;
     }
 
-    activeTimerRef.current = setTimeout(async () => {
-      try {
-        let currentText = "";
+    const saved = localStorage.getItem("authdesk_clipboard_ms");
+    const timeoutMs = saved !== null ? parseInt(saved, 10) : 30_000;
+
+    if (timeoutMs > 0) {
+      activeTimerRef.current = setTimeout(async () => {
         try {
-          const { readText, clear } = await import("@tauri-apps/plugin-clipboard-manager");
-          currentText = await readText();
-          if (currentText.trim() === codeDigits) {
-            await clear();
-          }
-        } catch {
-          if (typeof navigator !== "undefined" && navigator.clipboard && navigator.clipboard.readText) {
-            currentText = await navigator.clipboard.readText();
+          let currentText = "";
+          try {
+            const { readText, clear } = await import("@tauri-apps/plugin-clipboard-manager");
+            currentText = await readText();
             if (currentText.trim() === codeDigits) {
-              await navigator.clipboard.writeText("");
+              await clear();
+            }
+          } catch {
+            if (typeof navigator !== "undefined" && navigator.clipboard && navigator.clipboard.readText) {
+              currentText = await navigator.clipboard.readText();
+              if (currentText.trim() === codeDigits) {
+                await navigator.clipboard.writeText("");
+              }
             }
           }
+        } catch {
+        } finally {
+          activeTimerRef.current = null;
         }
-      } catch {
-      } finally {
-        activeTimerRef.current = null;
-      }
-    }, 30_000);
+      }, timeoutMs);
+    }
   }, []);
 
   return { copyCode };

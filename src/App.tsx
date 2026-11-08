@@ -26,12 +26,36 @@ export const App: React.FC = () => {
     });
   }, []);
 
+  const selectTheme = useCallback((newTheme: ThemeMode) => {
+    setTheme(newTheme);
+    localStorage.setItem("authdesk_theme", newTheme);
+  }, []);
+
   const toggleLang = useCallback(() => {
     setLang((prev) => {
       const next = prev === "es" ? "en" : "es";
       localStorage.setItem("authdesk_lang", next);
       return next;
     });
+  }, []);
+
+  const selectLang = useCallback((newLang: Language) => {
+    setLang(newLang);
+    localStorage.setItem("authdesk_lang", newLang);
+  }, []);
+
+  const [autoLockTimeout, setAutoLockTimeout] = useState<number>(() => {
+    const saved = localStorage.getItem("authdesk_autolock_ms");
+    return saved !== null ? parseInt(saved, 10) : 5 * 60 * 1000;
+  });
+
+  useEffect(() => {
+    const handleAutolockChange = () => {
+      const saved = localStorage.getItem("authdesk_autolock_ms");
+      setAutoLockTimeout(saved !== null ? parseInt(saved, 10) : 5 * 60 * 1000);
+    };
+    window.addEventListener("authdesk-autolock-changed", handleAutolockChange);
+    return () => window.removeEventListener("authdesk-autolock-changed", handleAutolockChange);
   }, []);
 
   const refreshVaultStatus = useCallback(async () => {
@@ -47,6 +71,7 @@ export const App: React.FC = () => {
         pin_available: false,
         pin_enabled: false,
         pin_attempts_remaining: null,
+        passwordless: false,
       });
     } finally {
       setLoading(false);
@@ -82,8 +107,8 @@ export const App: React.FC = () => {
   const isUnlocked = Boolean(vaultStatus?.initialized && !vaultStatus?.locked);
 
   useAutoLock({
-    enabled: isUnlocked,
-    timeoutMs: 5 * 60 * 1000,
+    enabled: isUnlocked && autoLockTimeout > 0,
+    timeoutMs: autoLockTimeout > 0 ? autoLockTimeout : 5 * 60 * 1000,
     onLock: () => {
       setVaultStatus((prev) => (prev ? { ...prev, locked: true } : null));
     },
@@ -127,6 +152,8 @@ export const App: React.FC = () => {
           pinAvailable={vaultStatus?.pin_available ?? false}
           pinEnabled={vaultStatus?.pin_enabled ?? false}
           onCycleTheme={cycleTheme}
+          onSelectTheme={selectTheme}
+          onSelectLang={selectLang}
           onLock={handleManualLock}
           onVaultStatusChanged={refreshVaultStatus}
         />

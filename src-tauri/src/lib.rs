@@ -23,7 +23,7 @@ extern crate zeroize;
 pub use error::AuthDeskError;
 pub use models::{
     Account, AccountCodeDto, AccountSummaryDto, AccountType, AddAccountDto, Algorithm,
-    UpdateAccountDto, VaultStatusDto,
+    UpdateAccountDto, VaultStatusDto, WindowSettingsDto,
 };
 pub use state::AppState;
 
@@ -148,6 +148,191 @@ fn toggle_global_shortcut(enabled: bool, app: tauri::AppHandle) -> Result<bool, 
     }
 }
 
+#[tauri::command]
+fn start_window_drag(win: tauri::WebviewWindow) -> Result<(), String> {
+    win.start_dragging().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_window_settings(state: tauri::State<'_, AppState>) -> WindowSettingsDto {
+    state.get_window_settings()
+}
+
+#[tauri::command]
+fn set_window_mode(
+    mode: String,
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    state.set_window_mode(&mode).map_err(|e| e.to_string())?;
+    if let Some(win) = app.get_webview_window("palette") {
+        let _ = win.set_skip_taskbar(mode != "taskbar");
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn set_popup_position(pos: String, state: tauri::State<'_, AppState>) -> Result<(), String> {
+    state.set_popup_position(&pos).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn set_always_on_top(
+    enabled: bool,
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    state.set_always_on_top(enabled).map_err(|e| e.to_string())?;
+    if let Some(win) = app.get_webview_window("palette") {
+        let _ = win.set_always_on_top(enabled);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn set_auto_hide_on_blur(enabled: bool, state: tauri::State<'_, AppState>) -> Result<(), String> {
+    state.set_auto_hide_on_blur(enabled).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn create_vault_passwordless(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    state.init_vault_passwordless().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn auto_unlock_if_passwordless(state: tauri::State<'_, AppState>) -> Result<bool, String> {
+    state.auto_unlock_if_passwordless().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn set_master_password(
+    current_password: Option<String>,
+    mut new_password: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    let res = state
+        .set_master_password(current_password.as_deref(), &new_password)
+        .map_err(|e| e.to_string());
+    new_password.zeroize();
+    res
+}
+
+#[tauri::command]
+fn remove_master_password(
+    mut current_password: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    let res = state
+        .remove_master_password(&current_password)
+        .map_err(|e| e.to_string());
+    current_password.zeroize();
+    res
+}
+
+#[tauri::command]
+fn change_master_password(
+    mut current_password: String,
+    mut new_password: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    let res = state
+        .change_master_password(&current_password, &new_password)
+        .map_err(|e| e.to_string());
+    current_password.zeroize();
+    new_password.zeroize();
+    res
+}
+
+#[tauri::command]
+fn load_demo_accounts(state: tauri::State<'_, AppState>) -> Result<usize, String> {
+    state.load_demo_accounts().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn remove_demo_accounts(state: tauri::State<'_, AppState>) -> Result<usize, String> {
+    state.remove_demo_accounts().map_err(|e| e.to_string())
+}
+
+pub fn calculate_popup_coordinates(
+    preferred_corner: &str,
+    click_pos: Option<tauri::PhysicalPosition<f64>>,
+    mon_pos: tauri::PhysicalPosition<i32>,
+    mon_size: tauri::PhysicalSize<u32>,
+    win_size: tauri::PhysicalSize<u32>,
+) -> (i32, i32) {
+    let margin = 16;
+    let top_offset = 36;
+    let bottom_offset = 48;
+
+    let (mut x, mut y) = match preferred_corner {
+        "bottom-right" => (
+            mon_pos.x + (mon_size.width as i32) - (win_size.width as i32) - margin,
+            mon_pos.y + (mon_size.height as i32) - (win_size.height as i32) - bottom_offset,
+        ),
+        "center" => (
+            mon_pos.x + ((mon_size.width as i32) - (win_size.width as i32)) / 2,
+            mon_pos.y + ((mon_size.height as i32) - (win_size.height as i32)) / 2,
+        ),
+        _ => (
+            mon_pos.x + (mon_size.width as i32) - (win_size.width as i32) - margin,
+            mon_pos.y + top_offset,
+        ),
+    };
+
+    if let Some(pos) = click_pos {
+        if pos.x != 0.0 || pos.y != 0.0 {
+            let px = pos.x as i32;
+            let py = pos.y as i32;
+            if py < mon_pos.y + (mon_size.height as i32) / 2 {
+                x = px - (win_size.width as i32) / 2;
+                y = py + 12;
+            } else {
+                x = px - (win_size.width as i32) / 2;
+                y = py - (win_size.height as i32) - 12;
+            }
+        }
+    }
+
+    let min_x = mon_pos.x + 8;
+    let max_x = mon_pos.x + (mon_size.width as i32) - (win_size.width as i32) - 8;
+    let min_y = mon_pos.y + 8;
+    let max_y = mon_pos.y + (mon_size.height as i32) - (win_size.height as i32) - 8;
+
+    let x = if min_x > max_x { min_x } else { x.clamp(min_x, max_x) };
+    let y = if min_y > max_y { min_y } else { y.clamp(min_y, max_y) };
+
+    (x, y)
+}
+
+pub fn position_popup_window(
+    win: &tauri::WebviewWindow,
+    click_pos: Option<tauri::PhysicalPosition<f64>>,
+    preferred_corner: &str,
+) -> Result<(), String> {
+    let monitor = win
+        .current_monitor()
+        .map_err(|e| e.to_string())?
+        .or_else(|| win.primary_monitor().ok().flatten())
+        .ok_or_else(|| "No monitor detected".to_string())?;
+
+    let mon_size = monitor.size();
+    let mon_pos = monitor.position();
+    let win_size = win
+        .outer_size()
+        .unwrap_or(tauri::PhysicalSize { width: 420, height: 560 });
+
+    let (x, y) = calculate_popup_coordinates(
+        preferred_corner,
+        click_pos,
+        *mon_pos,
+        *mon_size,
+        win_size,
+    );
+
+    win.set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(x, y)))
+        .map_err(|e| e.to_string())
+}
+
 pub fn toggle_palette_window(app: &tauri::AppHandle) {
     if let Some(win) = app.get_webview_window("palette") {
         if win.is_visible().unwrap_or(false) {
@@ -163,6 +348,16 @@ pub fn run() {
     let start_hidden = std::env::args().any(|a| a == "--hidden");
     tauri::Builder::default()
         .manage(AppState::new())
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::Focused(false) = event {
+                let app = window.app_handle();
+                let state = app.state::<AppState>();
+                let cfg = state.get_window_settings();
+                if cfg.auto_hide_on_blur || cfg.mode == "tray-popup" {
+                    let _ = window.hide();
+                }
+            }
+        })
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             if argv.iter().any(|a| a == "--toggle") {
                 toggle_palette_window(app);
@@ -178,16 +373,29 @@ pub fn run() {
             Some(vec!["--hidden"]),
         ))
         .setup(move |app| {
+            let state = app.state::<AppState>();
+            let _ = state.auto_unlock_if_passwordless();
+
             let _ = shortcut::setup_global_shortcut(app.handle());
             let show_i = MenuItem::with_id(app, "show", tray::TRAY_SHOW_LABEL, true, None::<&str>)?;
             let lock_i = MenuItem::with_id(app, "lock", tray::TRAY_LOCK_LABEL, true, None::<&str>)?;
             let quit_i = MenuItem::with_id(app, "quit", tray::TRAY_QUIT_LABEL, true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show_i, &lock_i, &quit_i])?;
-            let _tray = TrayIconBuilder::new()
-                .menu(&menu)
+
+            let mut tray_builder = TrayIconBuilder::new().menu(&menu);
+            if let Some(icon) = app.default_window_icon().cloned() {
+                tray_builder = tray_builder.icon(icon);
+            }
+
+            let _tray = tray_builder
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "show" => {
                         if let Some(w) = app.get_webview_window("palette") {
+                            let state = app.state::<AppState>();
+                            let cfg = state.get_window_settings();
+                            if cfg.mode == "tray-popup" {
+                                let _ = position_popup_window(&w, None, &cfg.popup_position);
+                            }
                             let _ = w.show();
                             let _ = w.set_focus();
                         }
@@ -208,10 +416,24 @@ pub fn run() {
                     if let TrayIconEvent::Click {
                         button: MouseButton::Left,
                         button_state: MouseButtonState::Up,
+                        position,
                         ..
                     } = event
                     {
-                        toggle_palette_window(tray.app_handle());
+                        let app = tray.app_handle();
+                        if let Some(win) = app.get_webview_window("palette") {
+                            if win.is_visible().unwrap_or(false) {
+                                let _ = win.hide();
+                            } else {
+                                let state = app.state::<AppState>();
+                                let cfg = state.get_window_settings();
+                                if cfg.mode == "tray-popup" {
+                                    let _ = position_popup_window(&win, Some(position), &cfg.popup_position);
+                                }
+                                let _ = win.show();
+                                let _ = win.set_focus();
+                            }
+                        }
                     }
                 })
                 .build(app)?;
@@ -239,7 +461,20 @@ pub fn run() {
             delete_account,
             update_account,
             reorder_accounts,
-            toggle_global_shortcut
+            toggle_global_shortcut,
+            start_window_drag,
+            get_window_settings,
+            set_window_mode,
+            set_popup_position,
+            set_always_on_top,
+            set_auto_hide_on_blur,
+            create_vault_passwordless,
+            auto_unlock_if_passwordless,
+            set_master_password,
+            remove_master_password,
+            change_master_password,
+            load_demo_accounts,
+            remove_demo_accounts
         ])
 
         .run(tauri::generate_context!())
@@ -450,5 +685,35 @@ mod tests {
         let app_state = AppState::with_accounts(AppState::default_test_accounts());
         let codes = get_current_codes_from_state(&app_state).unwrap();
         assert_eq!(codes.len(), app_state.accounts.read().unwrap().len());
+    }
+
+    // [ENC-B64::cnB0|Z2Ft|cm9k]
+    #[test]
+    fn test_calculate_popup_coordinates_small_display_no_panic() {
+        let mon_pos = tauri::PhysicalPosition::new(0, 0);
+        let mon_size = tauri::PhysicalSize::new(800, 480);
+        let win_size = tauri::PhysicalSize::new(420, 560);
+
+        let (x, y) = calculate_popup_coordinates("bottom-right", None, mon_pos, mon_size, win_size);
+        assert_eq!(y, 8);
+        assert!(x >= 8);
+
+        let mon_size_narrow = tauri::PhysicalSize::new(400, 800);
+        let (x2, y2) = calculate_popup_coordinates("top-right", None, mon_pos, mon_size_narrow, win_size);
+        assert_eq!(x2, 8);
+        assert!(y2 >= 8);
+    }
+
+    // [ENC-B64::cnB0|Z2Ft|cm9k]
+    #[test]
+    fn test_calculate_popup_coordinates_negative_multimonitor() {
+        let mon_pos = tauri::PhysicalPosition::new(-1920, 0);
+        let mon_size = tauri::PhysicalSize::new(1920, 1080);
+        let win_size = tauri::PhysicalSize::new(420, 560);
+
+        let click = Some(tauri::PhysicalPosition::new(-500.0, 20.0));
+        let (x, y) = calculate_popup_coordinates("tray-popup", click, mon_pos, mon_size, win_size);
+        assert_eq!(x, -500 - 210);
+        assert_eq!(y, 32);
     }
 }

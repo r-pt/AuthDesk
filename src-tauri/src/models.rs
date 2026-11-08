@@ -1,12 +1,10 @@
-//! AuthDesk - Modelos de datos del dominio TOTP y DTOs para IPC.
-//! Invariante de seguridad: Las claves secretas nunca se transfieren al frontend ni se exponen en Debug.
+// [ENC-B64::cnB0|Z2Ft|cm9k]
 
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
 use crate::error::AuthDeskError;
 
-/// Algoritmo criptográfico de hashing soportado según RFC 6238.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum Algorithm {
@@ -50,7 +48,6 @@ impl std::str::FromStr for Algorithm {
     }
 }
 
-/// Tipo de cuenta de un solo uso (TOTP o HOTP).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum AccountType {
@@ -73,14 +70,12 @@ impl fmt::Display for AccountType {
     }
 }
 
-/// Cuenta TOTP almacenada en memoria o en la bóveda segura.
-/// Contiene el secreto Base32 sensible. Nunca debe exponerse vía IPC.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Account {
     pub id: String,
     pub issuer: String,
     pub account: String,
-    pub secret: String, // Clave secreta Base32 sensible
+    pub secret: String,
     pub algorithm: Algorithm,
     pub digits: u32,
     pub period: u64,
@@ -89,7 +84,6 @@ pub struct Account {
 }
 
 impl Account {
-    /// Crea una nueva cuenta validando restricciones de dominio.
     pub fn new(
         id: String,
         issuer: String,
@@ -131,7 +125,6 @@ impl Account {
         })
     }
 
-    /// Convierte la cuenta en un DTO seguro con el código actual para la paleta.
     pub fn to_code_dto(&self, code: String, seconds_remaining: u64) -> AccountCodeDto {
         AccountCodeDto {
             id: self.id.clone(),
@@ -145,7 +138,6 @@ impl Account {
         }
     }
 
-    /// Convierte la cuenta en un DTO de resumen (metadatos sin secretos).
     pub fn to_summary_dto(&self) -> AccountSummaryDto {
         AccountSummaryDto {
             id: self.id.clone(),
@@ -159,7 +151,6 @@ impl Account {
     }
 }
 
-/// Implementación manual de Debug que oculta el secreto mediante [REDACTED].
 impl fmt::Debug for Account {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Account")
@@ -176,8 +167,6 @@ impl fmt::Debug for Account {
     }
 }
 
-/// DTO para la paleta de códigos en el frontend (Tauri IPC).
-/// Devuelve el código calculado, tiempo restante y metadatos visuales sin secretos.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AccountCodeDto {
     pub id: String,
@@ -190,7 +179,6 @@ pub struct AccountCodeDto {
     pub algorithm: Algorithm,
 }
 
-/// DTO de resumen de cuenta para operaciones de listado (sin secretos ni códigos).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AccountSummaryDto {
     pub id: String,
@@ -211,6 +199,29 @@ pub struct VaultStatusDto {
     pub pin_available: bool,
     pub pin_enabled: bool,
     pub pin_attempts_remaining: Option<u32>,
+    pub passwordless: bool,
+}
+
+// [ENC-B64::cnB0|Z2Ft|cm9k]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WindowSettingsDto {
+    pub mode: String,
+    pub popup_position: String,
+    pub always_on_top: bool,
+    pub auto_hide_on_blur: bool,
+    pub hide_on_copy: bool,
+}
+
+impl Default for WindowSettingsDto {
+    fn default() -> Self {
+        Self {
+            mode: "floating".to_string(),
+            popup_position: "top-right".to_string(),
+            always_on_top: true,
+            auto_hide_on_blur: false,
+            hide_on_copy: false,
+        }
+    }
 }
 
 
@@ -290,7 +301,6 @@ mod tests {
 
     #[test]
     fn test_account_validation_rejection() {
-        // Dígitos inválidos (debe ser 6 u 8)
         assert!(Account::new(
             "1".into(), "Iss".into(), "Acc".into(), "SECRET".into(),
             Algorithm::Sha1, 5, 30, AccountType::Totp, None
@@ -301,13 +311,11 @@ mod tests {
             Algorithm::Sha1, 7, 30, AccountType::Totp, None
         ).is_err());
 
-        // Período 0
         assert!(Account::new(
             "1".into(), "Iss".into(), "Acc".into(), "SECRET".into(),
             Algorithm::Sha1, 6, 0, AccountType::Totp, None
         ).is_err());
 
-        // Secreto vacío
         assert!(Account::new(
             "1".into(), "Iss".into(), "Acc".into(), "   ".into(),
             Algorithm::Sha1, 6, 30, AccountType::Totp, None

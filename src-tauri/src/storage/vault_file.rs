@@ -32,6 +32,8 @@ pub struct VaultEnvelope {
     pub kdf: KdfConfig,
     pub wrapped_master_key: EncryptedBlob,
     pub payload: EncryptedBlob,
+    #[serde(default)]
+    pub passwordless: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -169,6 +171,7 @@ mod tests {
                 nonce_b64: BASE64.encode(&[0u8; 24]),
                 ciphertext_b64: BASE64.encode(&[0u8; 64]),
             },
+            passwordless: false,
         }
     }
 
@@ -190,5 +193,42 @@ mod tests {
         let mut env = valid_envelope();
         env.kdf.m_cost_kib = 1024;
         assert!(env.validate().is_err());
+    }
+
+    // [ENC-B64::cnB0|Z2Ft|cm9k]
+    #[test]
+    fn test_envelope_backward_compatibility_and_passwordless() {
+        let json_without_passwordless = r#"{
+            "magic": "AUTHDESK_VAULT",
+            "version": 1,
+            "created_at": 1710000000,
+            "updated_at": 1710000000,
+            "kdf": {
+                "algorithm": "Argon2id",
+                "m_cost_kib": 65536,
+                "t_cost": 3,
+                "p_cost": 1,
+                "salt_b64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+            },
+            "wrapped_master_key": {
+                "nonce_b64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+                "ciphertext_b64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+            },
+            "payload": {
+                "nonce_b64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+                "ciphertext_b64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+            }
+        }"#;
+
+        let env: VaultEnvelope = serde_json::from_str(json_without_passwordless).unwrap();
+        assert!(!env.passwordless);
+        assert!(env.validate().is_ok());
+
+        let mut pw_env = env.clone();
+        pw_env.passwordless = true;
+        let serialized = serde_json::to_string(&pw_env).unwrap();
+        let deserialized: VaultEnvelope = serde_json::from_str(&serialized).unwrap();
+        assert!(deserialized.passwordless);
+        assert!(deserialized.validate().is_ok());
     }
 }

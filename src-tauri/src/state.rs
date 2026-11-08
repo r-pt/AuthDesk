@@ -10,11 +10,13 @@ use crate::crypto::aead::{
     encrypt_master_key, encrypt_payload, generate_master_key, MasterKey,
 };
 use crate::crypto::kdf::{derive_kek, derive_pin_kek, generate_salt, Argon2Params};
-use crate::crypto::keyring::{KeyringStorage, PinBlob, PIN_AAD};
+use crate::crypto::keyring::{
+    KeyringStorage, PinBlob, PASSWORDLESS_INTERNAL_KEY, PIN_AAD,
+};
 use crate::error::AuthDeskError;
 use crate::models::{
     Account, AccountCodeDto, AccountSummaryDto, AccountType, AddAccountDto, Algorithm,
-    UpdateAccountDto, VaultStatusDto,
+    UpdateAccountDto, VaultStatusDto, WindowSettingsDto,
 };
 use crate::otp::totp::{calculate_remaining_seconds, generate_totp};
 use crate::storage::atomic::{atomic_write_file, default_vault_path, safe_read_file};
@@ -61,6 +63,7 @@ pub struct AppState {
     pub master_key: RwLock<Option<MasterKey>>,
     pub pin_failed_attempts: AtomicU32,
     pub keyring: KeyringStorage,
+    pub window_settings: RwLock<WindowSettingsDto>,
 }
 
 impl Default for AppState {
@@ -82,6 +85,7 @@ impl AppState {
             master_key: RwLock::new(Some(MasterKey::new([0u8; 32]))),
             pin_failed_attempts: AtomicU32::new(0),
             keyring: KeyringStorage::new(),
+            window_settings: RwLock::new(WindowSettingsDto::default()),
         }
     }
 
@@ -92,6 +96,7 @@ impl AppState {
             master_key: RwLock::new(None),
             pin_failed_attempts: AtomicU32::new(0),
             keyring: KeyringStorage::new(),
+            window_settings: RwLock::new(WindowSettingsDto::default()),
         }
     }
 
@@ -163,6 +168,22 @@ impl AppState {
 
     pub fn get_vault_status(&self) -> VaultStatusDto {
         let initialized = self.vault_path.exists();
+        let is_pwless = if initialized {
+            if let Ok(bytes) = safe_read_file(&self.vault_path) {
+                serde_json::from_slice::<VaultEnvelope>(&bytes)
+                    .map(|e| e.passwordless)
+                    .unwrap_or(false)
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+
+        if initialized && is_pwless && self.is_locked() {
+            let _ = self.auto_unlock_if_passwordless();
+        }
+
         let locked = self.is_locked();
         let account_count = if locked {
             0
@@ -188,7 +209,554 @@ impl AppState {
             pin_available,
             pin_enabled,
             pin_attempts_remaining,
+            passwordless: is_pwless,
         }
+    }
+
+    pub fn get_window_settings(&self) -> WindowSettingsDto {
+        self.window_settings
+            .read()
+            .map(|s| s.clone())
+            .unwrap_or_default()
+    }
+
+    pub fn set_window_settings(&self, settings: WindowSettingsDto) {
+        if let Ok(mut lock) = self.window_settings.write() {
+            *lock = settings;
+        }
+    }
+
+    pub fn set_window_mode(&self, mode: &str) -> Result<(), AuthDeskError> {
+        if let Ok(mut lock) = self.window_settings.write() {
+            lock.mode = mode.to_string();
+            Ok(())
+        } else {
+            Err(AuthDeskError::Vault(
+                "Failed to acquire window settings lock".to_string(),
+            ))
+        }
+    }
+
+    pub fn set_popup_position(&self, pos: &str) -> Result<(), AuthDeskError> {
+        if let Ok(mut lock) = self.window_settings.write() {
+            lock.popup_position = pos.to_string();
+            Ok(())
+        } else {
+            Err(AuthDeskError::Vault(
+                "Failed to acquire window settings lock".to_string(),
+            ))
+        }
+    }
+
+    pub fn set_always_on_top(&self, enabled: bool) -> Result<(), AuthDeskError> {
+        if let Ok(mut lock) = self.window_settings.write() {
+            lock.always_on_top = enabled;
+            Ok(())
+        } else {
+            Err(AuthDeskError::Vault(
+                "Failed to acquire window settings lock".to_string(),
+            ))
+        }
+    }
+
+    pub fn set_auto_hide_on_blur(&self, enabled: bool) -> Result<(), AuthDeskError> {
+        if let Ok(mut lock) = self.window_settings.write() {
+            lock.auto_hide_on_blur = enabled;
+            Ok(())
+        } else {
+            Err(AuthDeskError::Vault(
+                "Failed to acquire window settings lock".to_string(),
+            ))
+        }
+    }
+
+    pub fn init_vault_passwordless(&self) -> Result<(), AuthDeskError> {
+        let mk = generate_master_key();
+        let salt = generate_salt();
+        let params = Argon2Params::default();
+        let kek = derive_kek(PASSWORDLESS_INTERNAL_KEY, &salt, &params)?;
+
+        let mk_aad = compute_wrapped_key_aad(
+            VAULT_VERSION,
+            params.m_cost_kib,
+            params.t_cost,
+            params.p_cost,
+            &salt,
+        );
+        let (mk_ct, mk_nonce) = encrypt_master_key(&mk, &kek, &mk_aad)?;
+
+        let _ = self.keyring.set_passwordless_mk(&mk);
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)?
+            .as_secs() as i64;
+
+        let accounts = self.accounts.read()?.clone();
+        let payload_obj = VaultPayload {
+            version: VAULT_VERSION,
+            accounts,
+        };
+        let mut payload_bytes = serde_json::to_vec(&payload_obj)
+            .map_err(|e| AuthDeskError::Vault(e.to_string()))?;
+        let payload_aad = compute_payload_aad(VAULT_VERSION, now);
+        let (payload_ct, payload_nonce) = encrypt_payload(&payload_bytes, &mk, &payload_aad)?;
+        payload_bytes.zeroize();
+
+        let env = VaultEnvelope {
+            magic: VAULT_MAGIC.to_string(),
+            version: VAULT_VERSION,
+            created_at: now,
+            updated_at: now,
+            kdf: KdfConfig {
+                algorithm: KDF_ALGO_ARGON2ID.to_string(),
+                m_cost_kib: params.m_cost_kib,
+                t_cost: params.t_cost,
+                p_cost: params.p_cost,
+                salt_b64: BASE64.encode(&salt),
+            },
+            wrapped_master_key: EncryptedBlob {
+                nonce_b64: BASE64.encode(&mk_nonce),
+                ciphertext_b64: BASE64.encode(&mk_ct),
+            },
+            payload: EncryptedBlob {
+                nonce_b64: BASE64.encode(&payload_nonce),
+                ciphertext_b64: BASE64.encode(&payload_ct),
+            },
+            passwordless: true,
+        };
+
+        env.validate()?;
+        let json = serde_json::to_vec_pretty(&env)
+            .map_err(|e| AuthDeskError::Vault(e.to_string()))?;
+        atomic_write_file(&self.vault_path, &json)?;
+
+        *self.master_key.write()? = Some(mk);
+        Ok(())
+    }
+
+    pub fn auto_unlock_if_passwordless(&self) -> Result<bool, AuthDeskError> {
+        if !self.vault_path.exists() {
+            return Ok(false);
+        }
+        let bytes = safe_read_file(&self.vault_path)?;
+        let env: VaultEnvelope = serde_json::from_slice(&bytes)
+            .map_err(|e| AuthDeskError::Vault(e.to_string()))?;
+        env.validate()?;
+
+        if !env.passwordless {
+            return Ok(false);
+        }
+
+        if !self.is_locked() {
+            return Ok(true);
+        }
+
+        let payload_aad = compute_payload_aad(env.version, env.updated_at);
+        let p_nonce_bytes = BASE64
+            .decode(env.payload.nonce_b64.as_bytes())
+            .map_err(|e| AuthDeskError::Vault(e.to_string()))?;
+        let p_nonce: [u8; 24] = p_nonce_bytes
+            .try_into()
+            .map_err(|_| AuthDeskError::Vault("Invalid payload nonce length".to_string()))?;
+        let p_ct = BASE64
+            .decode(env.payload.ciphertext_b64.as_bytes())
+            .map_err(|e| AuthDeskError::Vault(e.to_string()))?;
+
+        let mut recovered_mk: Option<MasterKey> = None;
+
+        if self.keyring.is_available() {
+            if let Ok(Some(keyring_mk)) = self.keyring.get_passwordless_mk() {
+                if let Ok(mut pt) = decrypt_payload(&p_ct, &p_nonce, &keyring_mk, &payload_aad) {
+                    if let Ok(payload) = serde_json::from_slice::<VaultPayload>(&pt) {
+                        pt.zeroize();
+                        *self.accounts.write()? = payload.accounts;
+                        recovered_mk = Some(keyring_mk);
+                    } else {
+                        pt.zeroize();
+                    }
+                }
+            }
+        }
+
+        if recovered_mk.is_none() {
+            let salt = BASE64
+                .decode(env.kdf.salt_b64.as_bytes())
+                .map_err(|e| AuthDeskError::Vault(e.to_string()))?;
+            let params = Argon2Params {
+                m_cost_kib: env.kdf.m_cost_kib,
+                t_cost: env.kdf.t_cost,
+                p_cost: env.kdf.p_cost,
+            };
+            let kek = derive_kek(PASSWORDLESS_INTERNAL_KEY, &salt, &params)?;
+            let mk_aad = compute_wrapped_key_aad(
+                env.version,
+                params.m_cost_kib,
+                params.t_cost,
+                params.p_cost,
+                &salt,
+            );
+            let mk_nonce_bytes = BASE64
+                .decode(env.wrapped_master_key.nonce_b64.as_bytes())
+                .map_err(|e| AuthDeskError::Vault(e.to_string()))?;
+            let mk_nonce: [u8; 24] = mk_nonce_bytes
+                .try_into()
+                .map_err(|_| AuthDeskError::Vault("Invalid wrapped MK nonce length".to_string()))?;
+            let mk_ct = BASE64
+                .decode(env.wrapped_master_key.ciphertext_b64.as_bytes())
+                .map_err(|e| AuthDeskError::Vault(e.to_string()))?;
+            let fallback_mk = decrypt_master_key(&mk_ct, &mk_nonce, &kek, &mk_aad)?;
+
+            let mut pt = decrypt_payload(&p_ct, &p_nonce, &fallback_mk, &payload_aad)?;
+            let payload_result: Result<VaultPayload, _> = serde_json::from_slice(&pt);
+            pt.zeroize();
+            let payload = payload_result.map_err(|e| AuthDeskError::Vault(e.to_string()))?;
+
+            if self.keyring.is_available() {
+                let _ = self.keyring.set_passwordless_mk(&fallback_mk);
+            }
+            *self.accounts.write()? = payload.accounts;
+            recovered_mk = Some(fallback_mk);
+        }
+
+        if let Some(mk) = recovered_mk {
+            *self.master_key.write()? = Some(mk);
+            Ok(true)
+        } else {
+            Err(AuthDeskError::Vault(
+                "No se pudo desbloquear la bóveda sin contraseña".to_string(),
+            ))
+        }
+    }
+
+    pub fn set_master_password(
+        &self,
+        current_password: Option<&str>,
+        new_password: &str,
+    ) -> Result<(), AuthDeskError> {
+        if new_password.trim().len() < 8 {
+            return Err(AuthDeskError::Vault(
+                "La contraseña debe tener al menos 8 caracteres".to_string(),
+            ));
+        }
+
+        if !self.vault_path.exists() {
+            return self.init_vault(new_password);
+        }
+
+        let bytes = safe_read_file(&self.vault_path)?;
+        let env: VaultEnvelope = serde_json::from_slice(&bytes)
+            .map_err(|e| AuthDeskError::Vault(e.to_string()))?;
+        env.validate()?;
+
+        let mk = if env.passwordless {
+            if let Some(existing_mk) = self.master_key.read()?.as_ref() {
+                existing_mk.clone()
+            } else {
+                let salt = BASE64
+                    .decode(env.kdf.salt_b64.as_bytes())
+                    .map_err(|e| AuthDeskError::Vault(e.to_string()))?;
+                let params = Argon2Params {
+                    m_cost_kib: env.kdf.m_cost_kib,
+                    t_cost: env.kdf.t_cost,
+                    p_cost: env.kdf.p_cost,
+                };
+                let kek = derive_kek(PASSWORDLESS_INTERNAL_KEY, &salt, &params)?;
+                let mk_aad = compute_wrapped_key_aad(
+                    env.version,
+                    params.m_cost_kib,
+                    params.t_cost,
+                    params.p_cost,
+                    &salt,
+                );
+                let mk_nonce_bytes = BASE64
+                    .decode(env.wrapped_master_key.nonce_b64.as_bytes())
+                    .map_err(|e| AuthDeskError::Vault(e.to_string()))?;
+                let mk_nonce: [u8; 24] = mk_nonce_bytes
+                    .try_into()
+                    .map_err(|_| AuthDeskError::Vault("Invalid wrapped MK nonce length".to_string()))?;
+                let mk_ct = BASE64
+                    .decode(env.wrapped_master_key.ciphertext_b64.as_bytes())
+                    .map_err(|e| AuthDeskError::Vault(e.to_string()))?;
+                decrypt_master_key(&mk_ct, &mk_nonce, &kek, &mk_aad)?
+            }
+        } else {
+            let cur_pwd = current_password.ok_or_else(|| {
+                AuthDeskError::Vault("Se requiere la contraseña actual".to_string())
+            })?;
+            let salt = BASE64
+                .decode(env.kdf.salt_b64.as_bytes())
+                .map_err(|e| AuthDeskError::Vault(e.to_string()))?;
+            let params = Argon2Params {
+                m_cost_kib: env.kdf.m_cost_kib,
+                t_cost: env.kdf.t_cost,
+                p_cost: env.kdf.p_cost,
+            };
+            let kek = derive_kek(cur_pwd, &salt, &params)?;
+            let mk_aad = compute_wrapped_key_aad(
+                env.version,
+                params.m_cost_kib,
+                params.t_cost,
+                params.p_cost,
+                &salt,
+            );
+            let mk_nonce_bytes = BASE64
+                .decode(env.wrapped_master_key.nonce_b64.as_bytes())
+                .map_err(|e| AuthDeskError::Vault(e.to_string()))?;
+            let mk_nonce: [u8; 24] = mk_nonce_bytes
+                .try_into()
+                .map_err(|_| AuthDeskError::Vault("Invalid wrapped MK nonce length".to_string()))?;
+            let mk_ct = BASE64
+                .decode(env.wrapped_master_key.ciphertext_b64.as_bytes())
+                .map_err(|e| AuthDeskError::Vault(e.to_string()))?;
+            decrypt_master_key(&mk_ct, &mk_nonce, &kek, &mk_aad)?
+        };
+
+        let new_salt = generate_salt();
+        let new_params = Argon2Params::default();
+        let new_kek = derive_kek(new_password, &new_salt, &new_params)?;
+        let new_mk_aad = compute_wrapped_key_aad(
+            env.version,
+            new_params.m_cost_kib,
+            new_params.t_cost,
+            new_params.p_cost,
+            &new_salt,
+        );
+        let (new_mk_ct, new_mk_nonce) = encrypt_master_key(&mk, &new_kek, &new_mk_aad)?;
+
+        let updated_env = VaultEnvelope {
+            magic: env.magic,
+            version: env.version,
+            created_at: env.created_at,
+            updated_at: env.updated_at,
+            kdf: KdfConfig {
+                algorithm: KDF_ALGO_ARGON2ID.to_string(),
+                m_cost_kib: new_params.m_cost_kib,
+                t_cost: new_params.t_cost,
+                p_cost: new_params.p_cost,
+                salt_b64: BASE64.encode(&new_salt),
+            },
+            wrapped_master_key: EncryptedBlob {
+                nonce_b64: BASE64.encode(&new_mk_nonce),
+                ciphertext_b64: BASE64.encode(&new_mk_ct),
+            },
+            payload: env.payload,
+            passwordless: false,
+        };
+
+        updated_env.validate()?;
+        let json = serde_json::to_vec_pretty(&updated_env)
+            .map_err(|e| AuthDeskError::Vault(e.to_string()))?;
+        atomic_write_file(&self.vault_path, &json)?;
+
+        let _ = self.keyring.delete_passwordless_mk();
+        *self.master_key.write()? = Some(mk);
+        Ok(())
+    }
+
+    pub fn remove_master_password(&self, current_password: &str) -> Result<(), AuthDeskError> {
+        let bytes = safe_read_file(&self.vault_path)?;
+        let env: VaultEnvelope = serde_json::from_slice(&bytes)
+            .map_err(|e| AuthDeskError::Vault(e.to_string()))?;
+        env.validate()?;
+
+        if env.passwordless {
+            return Ok(());
+        }
+
+        let salt = BASE64
+            .decode(env.kdf.salt_b64.as_bytes())
+            .map_err(|e| AuthDeskError::Vault(e.to_string()))?;
+        let params = Argon2Params {
+            m_cost_kib: env.kdf.m_cost_kib,
+            t_cost: env.kdf.t_cost,
+            p_cost: env.kdf.p_cost,
+        };
+        let kek = derive_kek(current_password, &salt, &params)?;
+        let mk_aad = compute_wrapped_key_aad(
+            env.version,
+            params.m_cost_kib,
+            params.t_cost,
+            params.p_cost,
+            &salt,
+        );
+        let mk_nonce_bytes = BASE64
+            .decode(env.wrapped_master_key.nonce_b64.as_bytes())
+            .map_err(|e| AuthDeskError::Vault(e.to_string()))?;
+        let mk_nonce: [u8; 24] = mk_nonce_bytes
+            .try_into()
+            .map_err(|_| AuthDeskError::Vault("Invalid wrapped MK nonce length".to_string()))?;
+        let mk_ct = BASE64
+            .decode(env.wrapped_master_key.ciphertext_b64.as_bytes())
+            .map_err(|e| AuthDeskError::Vault(e.to_string()))?;
+        let mk = decrypt_master_key(&mk_ct, &mk_nonce, &kek, &mk_aad)?;
+
+        let new_salt = generate_salt();
+        let new_params = Argon2Params::default();
+        let internal_kek = derive_kek(PASSWORDLESS_INTERNAL_KEY, &new_salt, &new_params)?;
+        let new_mk_aad = compute_wrapped_key_aad(
+            env.version,
+            new_params.m_cost_kib,
+            new_params.t_cost,
+            new_params.p_cost,
+            &new_salt,
+        );
+        let (new_mk_ct, new_mk_nonce) = encrypt_master_key(&mk, &internal_kek, &new_mk_aad)?;
+
+        let _ = self.keyring.set_passwordless_mk(&mk);
+        let _ = self.disable_pin();
+
+        let updated_env = VaultEnvelope {
+            magic: env.magic,
+            version: env.version,
+            created_at: env.created_at,
+            updated_at: env.updated_at,
+            kdf: KdfConfig {
+                algorithm: KDF_ALGO_ARGON2ID.to_string(),
+                m_cost_kib: new_params.m_cost_kib,
+                t_cost: new_params.t_cost,
+                p_cost: new_params.p_cost,
+                salt_b64: BASE64.encode(&new_salt),
+            },
+            wrapped_master_key: EncryptedBlob {
+                nonce_b64: BASE64.encode(&new_mk_nonce),
+                ciphertext_b64: BASE64.encode(&new_mk_ct),
+            },
+            payload: env.payload,
+            passwordless: true,
+        };
+
+        updated_env.validate()?;
+        let json = serde_json::to_vec_pretty(&updated_env)
+            .map_err(|e| AuthDeskError::Vault(e.to_string()))?;
+        atomic_write_file(&self.vault_path, &json)?;
+
+        *self.master_key.write()? = Some(mk);
+        Ok(())
+    }
+
+    pub fn change_master_password(
+        &self,
+        current_password: &str,
+        new_password: &str,
+    ) -> Result<(), AuthDeskError> {
+        self.set_master_password(Some(current_password), new_password)
+    }
+
+    pub fn load_demo_accounts(&self) -> Result<usize, AuthDeskError> {
+        if self.is_locked() {
+            return Err(AuthDeskError::Vault("Bóveda bloqueada".to_string()));
+        }
+
+        let demo_specs = [
+            (
+                "GitHub",
+                "demo@github.com",
+                "JBSWY3DPEHPK3PXP",
+                Algorithm::Sha1,
+                6,
+                30,
+            ),
+            (
+                "Google",
+                "demo@gmail.com",
+                "KRSXG5CTMVRXEZLU",
+                Algorithm::Sha1,
+                6,
+                30,
+            ),
+            (
+                "AWS",
+                "admin@company.aws",
+                "MZXW633PN5XW6MZX",
+                Algorithm::Sha1,
+                6,
+                30,
+            ),
+            (
+                "Proton",
+                "user@proton.me",
+                "NBSWY3DPEHPK3PXP",
+                Algorithm::Sha1,
+                6,
+                30,
+            ),
+            (
+                "Cloudflare",
+                "ops@cloudflare.com",
+                "OBZXE43VMVRXEZLU",
+                Algorithm::Sha1,
+                6,
+                30,
+            ),
+        ];
+
+        let mut accounts = self.accounts.write()?;
+        let mut added_count = 0;
+
+        for (issuer, account, secret, algo, digits, period) in demo_specs {
+            let norm_iss = issuer.trim().to_lowercase();
+            let norm_acc = account.trim().to_lowercase();
+            let exists = accounts.iter().any(|a| {
+                a.issuer.trim().to_lowercase() == norm_iss
+                    && a.account.trim().to_lowercase() == norm_acc
+            });
+
+            if !exists {
+                let id = format!("demo_{}_{}", norm_iss, rand::random::<u32>());
+                let acc = Account::new(
+                    id,
+                    issuer.to_string(),
+                    account.to_string(),
+                    secret.to_string(),
+                    algo,
+                    digits,
+                    period,
+                    AccountType::Totp,
+                    None,
+                )?;
+                accounts.push(acc);
+                added_count += 1;
+            }
+        }
+
+        drop(accounts);
+        if added_count > 0 {
+            self.persist_accounts_if_vault_exists()?;
+        }
+        Ok(added_count)
+    }
+
+    pub fn remove_demo_accounts(&self) -> Result<usize, AuthDeskError> {
+        if self.is_locked() {
+            return Err(AuthDeskError::Vault("Bóveda bloqueada".to_string()));
+        }
+
+        let demo_keys = [
+            ("github", "demo@github.com"),
+            ("google", "demo@gmail.com"),
+            ("aws", "admin@company.aws"),
+            ("proton", "user@proton.me"),
+            ("cloudflare", "ops@cloudflare.com"),
+        ];
+
+        let mut accounts = self.accounts.write()?;
+        let initial_len = accounts.len();
+
+        accounts.retain(|a| {
+            let iss = a.issuer.trim().to_lowercase();
+            let acc = a.account.trim().to_lowercase();
+            !demo_keys
+                .iter()
+                .any(|(d_iss, d_acc)| &iss == d_iss && &acc == d_acc)
+        });
+
+        let removed_count = initial_len - accounts.len();
+        drop(accounts);
+
+        if removed_count > 0 {
+            self.persist_accounts_if_vault_exists()?;
+        }
+        Ok(removed_count)
     }
 
 
@@ -246,6 +814,7 @@ impl AppState {
                 nonce_b64: BASE64.encode(&payload_nonce),
                 ciphertext_b64: BASE64.encode(&payload_ct),
             },
+            passwordless: false,
         };
 
         env.validate()?;
@@ -1213,5 +1782,58 @@ mod tests {
         assert!(matches!(state.reorder_accounts(vec![]), Err(AuthDeskError::Vault(_))));
 
         let _ = std::fs::remove_dir_all(&tmp_dir);
+    }
+
+    // [ENC-B64::cnB0|Z2Ft|cm9k]
+    #[test]
+    fn test_passwordless_vault_unit_lifecycle() {
+        crate::crypto::keyring::enable_test_keyring();
+        let tmp_dir = std::env::temp_dir().join(format!("authdesk_pwless_unit_{}", rand::random::<u64>()));
+        let vault_file = tmp_dir.join("vault.enc");
+        let state = AppState::with_path(vault_file);
+
+        assert!(state.init_vault_passwordless().is_ok());
+        let status = state.get_vault_status();
+        assert!(status.passwordless);
+        assert!(!status.locked);
+
+        assert_eq!(state.load_demo_accounts().unwrap(), 5);
+        assert_eq!(state.load_demo_accounts().unwrap(), 0);
+
+        assert!(state.lock_vault().is_ok());
+        assert!(state.is_locked());
+
+        let auto_status = state.get_vault_status();
+        assert!(auto_status.passwordless);
+        assert!(!auto_status.locked);
+        assert_eq!(auto_status.account_count, 5);
+
+        assert_eq!(state.remove_demo_accounts().unwrap(), 5);
+        assert_eq!(state.remove_demo_accounts().unwrap(), 0);
+
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+    }
+
+    // [ENC-B64::cnB0|Z2Ft|cm9k]
+    #[test]
+    fn test_window_settings_unit_controls() {
+        let state = AppState::new();
+        let default_cfg = state.get_window_settings();
+        assert_eq!(default_cfg.mode, "floating");
+        assert_eq!(default_cfg.popup_position, "top-right");
+        assert!(default_cfg.always_on_top);
+        assert!(!default_cfg.auto_hide_on_blur);
+
+        assert!(state.set_window_mode("taskbar").is_ok());
+        assert_eq!(state.get_window_settings().mode, "taskbar");
+
+        assert!(state.set_popup_position("center").is_ok());
+        assert_eq!(state.get_window_settings().popup_position, "center");
+
+        assert!(state.set_always_on_top(false).is_ok());
+        assert!(!state.get_window_settings().always_on_top);
+
+        assert!(state.set_auto_hide_on_blur(true).is_ok());
+        assert!(state.get_window_settings().auto_hide_on_blur);
     }
 }

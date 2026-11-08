@@ -50,4 +50,13 @@ export interface VaultStatusDto {
   pin_available: boolean;
   pin_enabled: boolean;
   pin_attempts_remaining: number | null;
+  passwordless: boolean;
+}
+
+export interface WindowSettingsDto {
+  mode: string;
+  popup_position: string;
+  always_on_top: boolean;
+  auto_hide_on_blur: boolean;
+  hide_on_copy: boolean;
 }
