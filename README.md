@@ -1,9 +1,9 @@
 <div align="center">
-  <img src="public/logo.svg" alt="AuthDesk Logo" width="96" height="96" />
-  <h1>AuthDesk</h1>
+  <img src="public/sinfondo.png" alt="AuthDesk Logo" width="96" height="96" />
+  <h1>AuthDesk Beta</h1>
   <p><strong>Fast, Zero-Network Desktop TOTP Authenticator for Linux</strong></p>
   <p>
-    <img src="https://img.shields.io/badge/version-0.1.0-FFC82C?style=flat-square&labelColor=2C2E33" alt="Version 0.1.0" />
+    <img src="https://img.shields.io/badge/version-0.1.0-FFC82C?style=flat-square&labelColor=2C2E33" alt="Version 0.1.1" />
     <img src="https://img.shields.io/badge/platform-Linux-FFC82C?style=flat-square&labelColor=2C2E33" alt="Platform Linux" />
     <img src="https://img.shields.io/badge/stack-Tauri_v2_%2B_Rust_%2B_React-FFC82C?style=flat-square&labelColor=2C2E33" alt="Stack" />
     <img src="https://img.shields.io/badge/license-MIT-FFC82C?style=flat-square&labelColor=2C2E33" alt="License MIT" />
@@ -21,7 +21,7 @@
 - **Quick 6-Digit PIN Unlock**: Optional hardware/OS-bound quick unlock backed by the Linux **Secret Service** (`libsecret` / GNOME Keyring / KDE Wallet) using a 256-bit `DeviceKey` combined with Argon2id and automatic 5-attempt lockout protection.
 - **RFC 6238 Compliant TOTP Engine**: Supports `SHA-1`, `SHA-256`, and `SHA-512`, `6` or `8` digits, and custom periods (`15s`, `30s`, `60s`) with live countdown rings.
 - **Account Management**: Full CRUD (Add, Edit, Delete with secret zeroization, Reorder) plus live `otpauth://totp/...` URI paste parsing and duplicate detection.
-- **Floating Movable Window**: Unlocked window dragging via native drag regions—not anchored to screen center.
+- **Floating Movable Window**: Unlocked window dragging via native drag regions—not anchored to screen center. (NOT WORKING RN)
 - **Command-Palette Workflow**: Configurable global shortcut (`Ctrl+Alt+A`), CLI toggle (`authdesk --toggle`), system tray integration, instant search, keyboard navigation, and auto-clearing clipboard (`30s`).
 - **Refined Solid UI**: 100% solid, non-transparent surfaces with modern typography (`Adwaita Sans` / `Inter`), crisp SVG iconography, and built-in `Dark`, `Light`, and `Coffee` themes.
 
