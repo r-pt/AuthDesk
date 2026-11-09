@@ -49,12 +49,24 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [activeTab, setActiveTab] = useState<SettingsTab>("security");
 
   const [vaultStatus, setVaultStatus] = useState<VaultStatusDto | null>(null);
-  const [windowSettings, setWindowSettings] = useState<WindowSettingsDto>({
-    mode: "floating",
-    popup_position: "top-right",
-    always_on_top: true,
-    auto_hide_on_blur: false,
-    hide_on_copy: true,
+  const [windowSettings, setWindowSettings] = useState<WindowSettingsDto>(() => {
+    const defaults: WindowSettingsDto = {
+      mode: "floating",
+      popup_position: "top-right",
+      always_on_top: true,
+      auto_hide_on_blur: false,
+      hide_on_copy: true,
+    };
+    const saved = localStorage.getItem("authdesk_window_settings");
+    if (saved) {
+      try {
+        const val = JSON.parse(saved);
+        if (val && typeof val === "object") {
+          return { ...defaults, ...val };
+        }
+      } catch {}
+    }
+    return defaults;
   });
 
   const [autostartActive, setAutostartActive] = useState(false);
@@ -93,7 +105,24 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
     try {
       const winSettings = await invoke<WindowSettingsDto>("get_window_settings");
-      setWindowSettings(winSettings);
+      const saved = localStorage.getItem("authdesk_window_settings");
+      if (saved) {
+        try {
+          const val = JSON.parse(saved);
+          if (val && typeof val === "object") {
+            setWindowSettings({ ...winSettings, ...val });
+          } else {
+            setWindowSettings(winSettings);
+            localStorage.setItem("authdesk_window_settings", JSON.stringify(winSettings));
+          }
+        } catch {
+          setWindowSettings(winSettings);
+          localStorage.setItem("authdesk_window_settings", JSON.stringify(winSettings));
+        }
+      } else {
+        setWindowSettings(winSettings);
+        localStorage.setItem("authdesk_window_settings", JSON.stringify(winSettings));
+      }
     } catch {}
 
     try {
@@ -123,7 +152,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const handleWindowModeChange = async (mode: string) => {
     try {
       await invoke("set_window_mode", { mode });
-      setWindowSettings((prev) => ({ ...prev, mode }));
+      setWindowSettings((prev) => {
+        const next = { ...prev, mode };
+        localStorage.setItem("authdesk_window_settings", JSON.stringify(next));
+        return next;
+      });
     } catch (e) {
       console.error(e);
     }
@@ -132,7 +165,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const handlePopupPositionChange = async (pos: string) => {
     try {
       await invoke("set_popup_position", { pos });
-      setWindowSettings((prev) => ({ ...prev, popup_position: pos }));
+      setWindowSettings((prev) => {
+        const next = { ...prev, popup_position: pos };
+        localStorage.setItem("authdesk_window_settings", JSON.stringify(next));
+        return next;
+      });
     } catch (e) {
       console.error(e);
     }
@@ -142,7 +179,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     const next = !windowSettings.always_on_top;
     try {
       await invoke("set_always_on_top", { enabled: next });
-      setWindowSettings((prev) => ({ ...prev, always_on_top: next }));
+      setWindowSettings((prev) => {
+        const updated = { ...prev, always_on_top: next };
+        localStorage.setItem("authdesk_window_settings", JSON.stringify(updated));
+        return updated;
+      });
     } catch (e) {
       console.error(e);
     }
@@ -152,7 +193,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     const next = !windowSettings.auto_hide_on_blur;
     try {
       await invoke("set_auto_hide_on_blur", { enabled: next });
-      setWindowSettings((prev) => ({ ...prev, auto_hide_on_blur: next }));
+      setWindowSettings((prev) => {
+        const updated = { ...prev, auto_hide_on_blur: next };
+        localStorage.setItem("authdesk_window_settings", JSON.stringify(updated));
+        return updated;
+      });
     } catch (e) {
       console.error(e);
     }
@@ -162,6 +207,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     const next = !hideOnCopy;
     setHideOnCopy(next);
     localStorage.setItem("authdesk_hide_on_copy", String(next));
+    setWindowSettings((prev) => {
+      const updated = { ...prev, hide_on_copy: next };
+      localStorage.setItem("authdesk_window_settings", JSON.stringify(updated));
+      return updated;
+    });
   };
 
   const handleAutostartToggle = async () => {
@@ -397,7 +447,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             className={`settings-tab-btn ${activeTab === "security" ? "active" : ""}`}
             onClick={() => setActiveTab("security")}
           >
-            <IconLock size={14} />
+            <IconLock size={13} />
             <span>{t.tabSecurity}</span>
           </button>
           <button
@@ -405,7 +455,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             className={`settings-tab-btn ${activeTab === "window" ? "active" : ""}`}
             onClick={() => setActiveTab("window")}
           >
-            <IconLayout size={14} />
+            <IconLayout size={13} />
             <span>{t.tabWindow}</span>
           </button>
           <button
@@ -413,7 +463,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             className={`settings-tab-btn ${activeTab === "timers" ? "active" : ""}`}
             onClick={() => setActiveTab("timers")}
           >
-            <IconClock size={14} />
+            <IconClock size={13} />
             <span>{t.tabTimers}</span>
           </button>
           <button
@@ -421,7 +471,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             className={`settings-tab-btn ${activeTab === "appearance" ? "active" : ""}`}
             onClick={() => setActiveTab("appearance")}
           >
-            <IconPalette size={14} />
+            <IconPalette size={13} />
             <span>{t.tabAppearance}</span>
           </button>
           <button
@@ -429,7 +479,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             className={`settings-tab-btn ${activeTab === "demo" ? "active" : ""}`}
             onClick={() => setActiveTab("demo")}
           >
-            <IconDatabase size={14} />
+            <IconDatabase size={13} />
             <span>{t.tabDemo}</span>
           </button>
         </div>
@@ -728,10 +778,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           {activeTab === "window" && (
             <div className="settings-section">
               <div className="settings-card">
-                <div className="setting-row">
-                  <div>
-                    <div className="card-title">{t.windowModeTitle}</div>
-                  </div>
+                <div className="setting-block">
+                  <div className="card-title">{t.windowModeTitle}</div>
                   <div className="segmented-control">
                     <button
                       type="button"
@@ -757,19 +805,31 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
                 </div>
 
-                <div className="setting-row" style={{ marginTop: "12px" }}>
-                  <div>
-                    <div className="card-title">{t.popupPositionTitle}</div>
+                <div className="setting-block" style={{ marginTop: "12px" }}>
+                  <div className="card-title">{t.popupPositionTitle}</div>
+                  <div className="segmented-control">
+                    <button
+                      type="button"
+                      className={`segment-btn ${windowSettings.popup_position === "top-right" ? "active" : ""}`}
+                      onClick={() => handlePopupPositionChange("top-right")}
+                    >
+                      {t.posTopRight}
+                    </button>
+                    <button
+                      type="button"
+                      className={`segment-btn ${windowSettings.popup_position === "bottom-right" ? "active" : ""}`}
+                      onClick={() => handlePopupPositionChange("bottom-right")}
+                    >
+                      {t.posBottomRight}
+                    </button>
+                    <button
+                      type="button"
+                      className={`segment-btn ${windowSettings.popup_position === "center" ? "active" : ""}`}
+                      onClick={() => handlePopupPositionChange("center")}
+                    >
+                      {t.posCenter}
+                    </button>
                   </div>
-                  <select
-                    className="form-select"
-                    value={windowSettings.popup_position}
-                    onChange={(e) => handlePopupPositionChange(e.target.value)}
-                  >
-                    <option value="top-right">{t.posTopRight}</option>
-                    <option value="bottom-right">{t.posBottomRight}</option>
-                    <option value="center">{t.posCenter}</option>
-                  </select>
                 </div>
               </div>
 
@@ -836,10 +896,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           {activeTab === "timers" && (
             <div className="settings-section">
               <div className="settings-card">
-                <div className="setting-row">
-                  <div>
-                    <div className="card-title">{t.autoLockTitle}</div>
-                  </div>
+                <div className="setting-block">
+                  <div className="card-title">{t.autoLockTitle}</div>
                   <div className="segmented-control">
                     {[
                       { ms: 0, label: t.timerNever },
@@ -862,10 +920,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
 
               <div className="settings-card" style={{ marginTop: "10px" }}>
-                <div className="setting-row">
-                  <div>
-                    <div className="card-title">{t.clipboardClearTitle}</div>
-                  </div>
+                <div className="setting-block">
+                  <div className="card-title">{t.clipboardClearTitle}</div>
                   <div className="segmented-control">
                     {[
                       { ms: 10 * 1000, label: t.timer10s },
@@ -891,10 +947,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           {activeTab === "appearance" && (
             <div className="settings-section">
               <div className="settings-card">
-                <div className="setting-row">
-                  <div>
-                    <div className="card-title">{t.themeTitle}</div>
-                  </div>
+                <div className="setting-block">
+                  <div className="card-title">{t.themeTitle}</div>
                   <div className="segmented-control">
                     {(["dark", "light", "coffee"] as ThemeMode[]).map((m) => (
                       <button
@@ -909,10 +963,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
                 </div>
 
-                <div className="setting-row" style={{ marginTop: "12px" }}>
-                  <div>
-                    <div className="card-title">{t.langTitle}</div>
-                  </div>
+                <div className="setting-block" style={{ marginTop: "12px" }}>
+                  <div className="card-title">{t.langTitle}</div>
                   <div className="segmented-control">
                     {(["es", "en"] as Language[]).map((l) => (
                       <button
@@ -960,11 +1012,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   {t.demoDesc}
                 </div>
 
-                <div style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
+                <div className="card-actions-row" style={{ marginTop: "12px" }}>
                   <button
                     type="button"
                     className="primary-action-btn"
-                    style={{ width: "auto", padding: "8px 14px", fontSize: "12px" }}
+                    style={{ width: "auto", padding: "8px 14px", fontSize: "12px", display: "inline-flex", alignItems: "center", gap: "6px" }}
                     onClick={handleLoadDemo}
                     disabled={isDemoBusy}
                   >
@@ -974,7 +1026,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <button
                     type="button"
                     className="header-pill-btn"
-                    style={{ color: "#ef4444" }}
+                    style={{ color: "#ef4444", padding: "8px 14px" }}
                     onClick={handleRemoveDemo}
                     disabled={isDemoBusy}
                   >

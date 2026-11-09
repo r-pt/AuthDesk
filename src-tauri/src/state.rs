@@ -1,6 +1,6 @@
 // [ENC-B64::cnB0|Z2Ft|cm9k]
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::RwLock;
 use data_encoding::BASE64;
 use zeroize::Zeroize;
@@ -64,6 +64,7 @@ pub struct AppState {
     pub pin_failed_attempts: AtomicU32,
     pub keyring: KeyringStorage,
     pub window_settings: RwLock<WindowSettingsDto>,
+    pub last_window_op_ms: AtomicU64,
 }
 
 impl Default for AppState {
@@ -86,6 +87,7 @@ impl AppState {
             pin_failed_attempts: AtomicU32::new(0),
             keyring: KeyringStorage::new(),
             window_settings: RwLock::new(WindowSettingsDto::default()),
+            last_window_op_ms: AtomicU64::new(0),
         }
     }
 
@@ -97,6 +99,7 @@ impl AppState {
             pin_failed_attempts: AtomicU32::new(0),
             keyring: KeyringStorage::new(),
             window_settings: RwLock::new(WindowSettingsDto::default()),
+            last_window_op_ms: AtomicU64::new(0),
         }
     }
 
@@ -211,6 +214,26 @@ impl AppState {
             pin_attempts_remaining,
             passwordless: is_pwless,
         }
+    }
+
+    pub fn mark_window_op(&self) {
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+        self.last_window_op_ms.store(now_ms, Ordering::SeqCst);
+    }
+
+    pub fn is_recent_window_op(&self, threshold_ms: u64) -> bool {
+        let last = self.last_window_op_ms.load(Ordering::SeqCst);
+        if last == 0 {
+            return false;
+        }
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+        now_ms.saturating_sub(last) <= threshold_ms
     }
 
     pub fn get_window_settings(&self) -> WindowSettingsDto {

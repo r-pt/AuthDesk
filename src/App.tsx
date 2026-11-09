@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { PaletteView } from "./components/PaletteView";
 import { LockScreen } from "./components/LockScreen";
 import { useAutoLock } from "./hooks/useAutoLock";
-import { VaultStatusDto, ThemeMode, Language } from "./types";
+import { VaultStatusDto, ThemeMode, Language, WindowSettingsDto } from "./types";
 import "./styles/global.css";
 
 const THEMES: ThemeMode[] = ["dark", "light", "coffee"];
@@ -17,6 +17,49 @@ export const App: React.FC = () => {
   });
   const [vaultStatus, setVaultStatus] = useState<VaultStatusDto | null>(null);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const syncWindowSettings = async () => {
+      try {
+        const { invoke } = await import("@tauri-apps/api/core");
+        const saved = localStorage.getItem("authdesk_window_settings");
+        let parsed: WindowSettingsDto | null = null;
+        if (saved) {
+          try {
+            const val = JSON.parse(saved);
+            if (val && typeof val === "object") {
+              parsed = val;
+            }
+          } catch {
+            parsed = null;
+          }
+        }
+        if (parsed) {
+          if (parsed.popup_position) {
+            await invoke("set_popup_position", { pos: parsed.popup_position });
+          }
+          if (parsed.mode) {
+            await invoke("set_window_mode", { mode: parsed.mode });
+          }
+          if (typeof parsed.always_on_top === "boolean") {
+            await invoke("set_always_on_top", { enabled: parsed.always_on_top });
+          }
+          if (typeof parsed.auto_hide_on_blur === "boolean") {
+            await invoke("set_auto_hide_on_blur", { enabled: parsed.auto_hide_on_blur });
+          }
+          if (typeof parsed.hide_on_copy === "boolean") {
+            localStorage.setItem("authdesk_hide_on_copy", String(parsed.hide_on_copy));
+          }
+        } else {
+          const initial = await invoke<WindowSettingsDto>("get_window_settings");
+          localStorage.setItem("authdesk_window_settings", JSON.stringify(initial));
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    };
+    syncWindowSettings();
+  }, []);
 
   const cycleTheme = useCallback(() => {
     setTheme((prev) => {

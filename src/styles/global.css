@@ -656,15 +656,18 @@ html, body {
   align-items: center;
   padding: 14px 16px;
   border-bottom: 1px solid var(--border-subtle);
+  box-sizing: border-box;
 }
 
 .settings-body {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 16px;
   display: flex;
   flex-direction: column;
   gap: 12px;
+  box-sizing: border-box;
 }
 
 .settings-card {
@@ -675,6 +678,7 @@ html, body {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  box-sizing: border-box;
 }
 
 /* [ENC-B64::cnB0|Z2Ft|cm9k] */
@@ -946,14 +950,17 @@ html, body {
   align-items: center;
   justify-content: center;
   z-index: 100;
+  border-radius: 16px;
+  overflow: hidden;
 }
 
 .settings-modal-dialog {
-  width: 396px;
-  height: 520px;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
-  border-radius: 14px;
+  border-radius: 16px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -962,20 +969,24 @@ html, body {
 }
 
 .settings-tabs-bar {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  box-sizing: border-box;
   background: var(--bg-card);
   border-bottom: 1px solid var(--border-subtle);
-  padding: 4px 6px;
-  gap: 3px;
-  overflow-x: auto;
+  padding: 3px;
+  gap: 2px;
+  overflow: hidden;
   flex-shrink: 0;
 }
 
 .settings-tab-btn {
   display: flex;
   align-items: center;
-  gap: 5px;
-  padding: 5px 8px;
+  justify-content: center;
+  gap: 3px;
+  padding: 6px 1px;
+  box-sizing: border-box;
   border-radius: 6px;
   border: none;
   background: transparent;
@@ -984,7 +995,20 @@ html, body {
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
   transition: all 0.12s ease;
+}
+
+.settings-tab-btn span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-tab-btn svg {
+  flex-shrink: 0;
 }
 
 .settings-tab-btn:hover {
@@ -1025,9 +1049,15 @@ html, body {
 
 .card-actions-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-top: 10px;
   align-items: center;
+  width: 100%;
+}
+
+.card-actions-row button {
+  max-width: 100%;
 }
 
 .status-badge {
@@ -1069,11 +1099,44 @@ html, body {
   border-top: 1px solid var(--border-subtle);
 }
 
+.sub-flow-form > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .setting-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 12px;
+}
+
+.setting-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.setting-block .segmented-control {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.setting-block .segment-btn {
+  width: 100%;
+  text-align: center;
+  justify-content: center;
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  padding: 6px 4px;
 }
 
 .segmented-control {
@@ -1083,6 +1146,7 @@ html, body {
   border-radius: 8px;
   padding: 2px;
   gap: 2px;
+  box-sizing: border-box;
 }
 
 .segment-btn {
@@ -1093,6 +1157,7 @@ html, body {
   font-size: 11px;
   font-weight: 600;
   border-radius: 6px;
+  box-sizing: border-box;
   cursor: pointer;
   transition: all 0.12s ease;
 }

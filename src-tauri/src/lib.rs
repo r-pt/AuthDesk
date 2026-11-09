@@ -164,16 +164,43 @@ fn set_window_mode(
     state: tauri::State<'_, AppState>,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
+    state.mark_window_op();
     state.set_window_mode(&mode).map_err(|e| e.to_string())?;
+    let cfg = state.get_window_settings();
     if let Some(win) = app.get_webview_window("palette") {
+        let is_vis = win.is_visible().unwrap_or(false);
         let _ = win.set_skip_taskbar(mode != "taskbar");
+        if mode == "tray-popup" {
+            let _ = position_popup_window(&win, None, &cfg.popup_position);
+        } else {
+            let _ = win.center();
+        }
+        if is_vis {
+            let _ = win.show();
+            let _ = win.set_focus();
+        }
     }
     Ok(())
 }
 
 #[tauri::command]
-fn set_popup_position(pos: String, state: tauri::State<'_, AppState>) -> Result<(), String> {
-    state.set_popup_position(&pos).map_err(|e| e.to_string())
+fn set_popup_position(
+    pos: String,
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    state.mark_window_op();
+    state.set_popup_position(&pos).map_err(|e| e.to_string())?;
+    let cfg = state.get_window_settings();
+    if let Some(win) = app.get_webview_window("palette") {
+        let is_vis = win.is_visible().unwrap_or(false);
+        if is_vis && cfg.mode == "tray-popup" {
+            let _ = position_popup_window(&win, None, &pos);
+            let _ = win.show();
+            let _ = win.set_focus();
+        }
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -182,6 +209,7 @@ fn set_always_on_top(
     state: tauri::State<'_, AppState>,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
+    state.mark_window_op();
     state.set_always_on_top(enabled).map_err(|e| e.to_string())?;
     if let Some(win) = app.get_webview_window("palette") {
         let _ = win.set_always_on_top(enabled);
@@ -338,6 +366,11 @@ pub fn toggle_palette_window(app: &tauri::AppHandle) {
         if win.is_visible().unwrap_or(false) {
             let _ = win.hide();
         } else {
+            let state = app.state::<AppState>();
+            let cfg = state.get_window_settings();
+            if cfg.mode == "tray-popup" {
+                let _ = position_popup_window(&win, None, &cfg.popup_position);
+            }
             let _ = win.show();
             let _ = win.set_focus();
         }
@@ -352,8 +385,11 @@ pub fn run() {
             if let tauri::WindowEvent::Focused(false) = event {
                 let app = window.app_handle();
                 let state = app.state::<AppState>();
+                if state.is_recent_window_op(600) {
+                    return;
+                }
                 let cfg = state.get_window_settings();
-                if cfg.auto_hide_on_blur || cfg.mode == "tray-popup" {
+                if cfg.auto_hide_on_blur {
                     let _ = window.hide();
                 }
             }
@@ -362,6 +398,11 @@ pub fn run() {
             if argv.iter().any(|a| a == "--toggle") {
                 toggle_palette_window(app);
             } else if let Some(win) = app.get_webview_window("palette") {
+                let state = app.state::<AppState>();
+                let cfg = state.get_window_settings();
+                if cfg.mode == "tray-popup" {
+                    let _ = position_popup_window(&win, None, &cfg.popup_position);
+                }
                 let _ = win.show();
                 let _ = win.set_focus();
             }
