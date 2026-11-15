@@ -2,7 +2,6 @@
 import React, { useState, useMemo, useRef, useEffect } from "react";
 import { getTranslation, Language } from "../i18n";
 import { BrandLogo } from "./BrandLogo";
-import { DragBar } from "./DragBar";
 import { IconShield } from "./Icons";
 
 interface SetupVaultViewProps {
@@ -68,7 +67,6 @@ export const SetupVaultView: React.FC<SetupVaultViewProps> = ({ lang, onSuccess 
 
   return (
     <form className="lock-form-container" onSubmit={handleSubmit}>
-      <DragBar />
       <div style={{ display: "flex", justifyContent: "center", marginBottom: "12px", marginTop: "4px" }}>
         <BrandLogo size={48} />
       </div>

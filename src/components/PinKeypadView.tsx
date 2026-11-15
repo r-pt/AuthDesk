@@ -8,7 +8,7 @@ interface PinKeypadViewProps {
   accountCount: number;
   initialAttemptsRemaining: number | null;
   onSuccess: () => void;
-  onSwitchToPassword: () => void;
+  onSwitchToPassword?: () => void;
 }
 
 export const PinKeypadView: React.FC<PinKeypadViewProps> = ({
@@ -25,6 +25,7 @@ export const PinKeypadView: React.FC<PinKeypadViewProps> = ({
     initialAttemptsRemaining
   );
   const t = getTranslation(lang);
+  const isLockedOut = attemptsRemaining !== null && attemptsRemaining <= 0;
 
   const submitPin = useCallback(
     async (pinToSubmit: string) => {
@@ -48,7 +49,7 @@ export const PinKeypadView: React.FC<PinKeypadViewProps> = ({
             pin_enabled: boolean;
           }>("get_vault_status");
           setAttemptsRemaining(status.pin_attempts_remaining);
-          if (!status.pin_enabled || status.pin_attempts_remaining === 0) {
+          if (onSwitchToPassword && (!status.pin_enabled || status.pin_attempts_remaining === 0)) {
             onSwitchToPassword();
           }
         } catch {}
@@ -59,14 +60,14 @@ export const PinKeypadView: React.FC<PinKeypadViewProps> = ({
 
   const handleDigit = useCallback(
     (digit: string) => {
-      if (isUnlocking || pin.length >= 6) return;
+      if (isUnlocking || isLockedOut || pin.length >= 6) return;
       const next = pin + digit;
       setPin(next);
       if (next.length === 6) {
         submitPin(next);
       }
     },
-    [isUnlocking, pin, submitPin]
+    [isUnlocking, isLockedOut, pin, submitPin]
   );
 
   const handleBackspace = useCallback(() => {
@@ -139,7 +140,7 @@ export const PinKeypadView: React.FC<PinKeypadViewProps> = ({
             key={num}
             type="button"
             className="pin-key-btn"
-            disabled={isUnlocking}
+            disabled={isUnlocking || isLockedOut}
             onClick={() => handleDigit(num)}
           >
             {num}
@@ -149,7 +150,7 @@ export const PinKeypadView: React.FC<PinKeypadViewProps> = ({
         <button
           type="button"
           className="pin-key-btn"
-          disabled={isUnlocking}
+          disabled={isUnlocking || isLockedOut}
           onClick={() => handleDigit("0")}
         >
           0
@@ -165,13 +166,15 @@ export const PinKeypadView: React.FC<PinKeypadViewProps> = ({
         </button>
       </div>
 
-      <button
-        type="button"
-        className="switch-mode-btn"
-        onClick={onSwitchToPassword}
-      >
-        {t.usePassword}
-      </button>
+      {onSwitchToPassword && (
+        <button
+          type="button"
+          className="switch-mode-btn"
+          onClick={onSwitchToPassword}
+        >
+          {t.usePassword}
+        </button>
+      )}
     </div>
   );
 };

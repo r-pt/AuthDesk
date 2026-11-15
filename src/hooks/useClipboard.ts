@@ -1,18 +1,9 @@
 // [ENC-HEX::727074:67616d:726f64]
-import { useRef, useCallback, useEffect } from "react";
+import { useCallback } from "react";
+
+let activeClipboardTimer: ReturnType<typeof setTimeout> | null = null;
 
 export function useClipboard() {
-  const activeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (activeTimerRef.current) {
-        clearTimeout(activeTimerRef.current);
-        activeTimerRef.current = null;
-      }
-    };
-  }, []);
-
   const copyCode = useCallback(async (rawCode: string) => {
     const codeDigits = rawCode.replace(/\s+/g, "");
 
@@ -25,16 +16,16 @@ export function useClipboard() {
       }
     }
 
-    if (activeTimerRef.current) {
-      clearTimeout(activeTimerRef.current);
-      activeTimerRef.current = null;
+    if (activeClipboardTimer) {
+      clearTimeout(activeClipboardTimer);
+      activeClipboardTimer = null;
     }
 
     const saved = localStorage.getItem("authdesk_clipboard_ms");
     const timeoutMs = saved !== null ? parseInt(saved, 10) : 30_000;
 
     if (timeoutMs > 0) {
-      activeTimerRef.current = setTimeout(async () => {
+      const timerId = setTimeout(async () => {
         try {
           let currentText = "";
           try {
@@ -53,9 +44,12 @@ export function useClipboard() {
           }
         } catch {
         } finally {
-          activeTimerRef.current = null;
+          if (activeClipboardTimer === timerId) {
+            activeClipboardTimer = null;
+          }
         }
       }, timeoutMs);
+      activeClipboardTimer = timerId;
     }
   }, []);
 

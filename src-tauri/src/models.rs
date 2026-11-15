@@ -2,6 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use zeroize::Zeroize;
 
 use crate::error::AuthDeskError;
 
@@ -167,6 +168,12 @@ impl fmt::Debug for Account {
     }
 }
 
+impl Drop for Account {
+    fn drop(&mut self) {
+        self.secret.zeroize();
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AccountCodeDto {
     pub id: String,
@@ -210,17 +217,31 @@ pub struct WindowSettingsDto {
     pub always_on_top: bool,
     pub auto_hide_on_blur: bool,
     pub hide_on_copy: bool,
+    #[serde(default)]
+    pub resizable: bool,
 }
 
 impl Default for WindowSettingsDto {
     fn default() -> Self {
         Self {
-            mode: "floating".to_string(),
+            mode: "popup".to_string(),
             popup_position: "top-right".to_string(),
             always_on_top: true,
             auto_hide_on_blur: false,
-            hide_on_copy: false,
+            hide_on_copy: true,
+            resizable: false,
         }
+    }
+}
+
+pub fn normalize_window_mode(mode: &str) -> Result<&'static str, AuthDeskError> {
+    match mode.trim().to_ascii_lowercase().as_str() {
+        "popup" | "floating" | "tray-popup" => Ok("popup"),
+        "normal" | "taskbar" => Ok("normal"),
+        other => Err(AuthDeskError::InvalidParameter(format!(
+            "Modo de ventana no soportado: {}",
+            other
+        ))),
     }
 }
 
@@ -248,6 +269,12 @@ impl std::fmt::Debug for AddAccountDto {
     }
 }
 
+impl Drop for AddAccountDto {
+    fn drop(&mut self) {
+        self.secret.zeroize();
+    }
+}
+
 // [ENC-B64::cnB0|Z2Ft|cm9k]
 #[derive(Clone, Serialize, Deserialize)]
 pub struct UpdateAccountDto {
@@ -272,6 +299,99 @@ impl std::fmt::Debug for UpdateAccountDto {
             .field("period", &self.period)
             .finish()
     }
+}
+
+impl Drop for UpdateAccountDto {
+    fn drop(&mut self) {
+        if let Some(ref mut s) = self.secret {
+            s.zeroize();
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ImportPreviewItemDto {
+    pub index: usize,
+    pub issuer: String,
+    pub account: String,
+    pub algorithm: Algorithm,
+    pub digits: u32,
+    pub period: u64,
+    pub is_duplicate: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ImportSkippedItemDto {
+    pub source: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ImportPreviewResultDto {
+    pub items: Vec<ImportPreviewItemDto>,
+    pub skipped: Vec<ImportSkippedItemDto>,
+    pub total_found: usize,
+    pub ready_count: usize,
+    pub duplicate_count: usize,
+    pub skipped_count: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ImportConfirmResultDto {
+    pub imported_count: usize,
+    pub skipped_duplicates: usize,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct QrImageInputDto {
+    pub name: String,
+    pub bytes: Vec<u8>,
+}
+
+impl fmt::Debug for QrImageInputDto {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("QrImageInputDto")
+            .field("name", &self.name)
+            .field("bytes_len", &self.bytes.len())
+            .finish()
+    }
+}
+
+impl Drop for QrImageInputDto {
+    fn drop(&mut self) {
+        self.bytes.zeroize();
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExportQrBatchDto {
+    pub batch_index: usize,
+    pub batch_size: usize,
+    pub account_count: usize,
+    pub svg: String,
+}
+
+impl fmt::Debug for ExportQrBatchDto {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ExportQrBatchDto")
+            .field("batch_index", &self.batch_index)
+            .field("batch_size", &self.batch_size)
+            .field("account_count", &self.account_count)
+            .field("svg", &"[REDACTED]")
+            .finish()
+    }
+}
+
+impl Drop for ExportQrBatchDto {
+    fn drop(&mut self) {
+        self.svg.zeroize();
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExportQrResultDto {
+    pub batches: Vec<ExportQrBatchDto>,
+    pub total_accounts: usize,
 }
 
 #[cfg(test)]
@@ -368,5 +488,64 @@ mod tests {
         let debug_str = format!("{:?}", dto);
         assert!(debug_str.contains("[REDACTED]"));
         assert!(!debug_str.contains("JBSWY3DPEHPK3PXP"));
+    }
+
+    #[test]
+    fn test_window_settings_default_and_mode_normalization() {
+        let cfg = WindowSettingsDto::default();
+        assert_eq!(cfg.mode, "popup");
+        assert_eq!(cfg.popup_position, "top-right");
+        assert!(cfg.hide_on_copy);
+        assert!(!cfg.resizable);
+
+        assert_eq!(normalize_window_mode("popup").unwrap(), "popup");
+        assert_eq!(normalize_window_mode("floating").unwrap(), "popup");
+        assert_eq!(normalize_window_mode("tray-popup").unwrap(), "popup");
+        assert_eq!(normalize_window_mode("normal").unwrap(), "normal");
+        assert_eq!(normalize_window_mode("taskbar").unwrap(), "normal");
+        assert_eq!(normalize_window_mode("  POPUP ").unwrap(), "popup");
+        assert_eq!(normalize_window_mode(" TaskBar ").unwrap(), "normal");
+        assert!(normalize_window_mode("").is_err());
+        assert!(normalize_window_mode("unknown").is_err());
+    }
+
+    #[test]
+    fn test_import_preview_dtos_have_no_secret_fields() {
+        let preview = ImportPreviewResultDto {
+            items: vec![ImportPreviewItemDto {
+                index: 0,
+                issuer: "GitHub".to_string(),
+                account: "user@github.com".to_string(),
+                algorithm: Algorithm::Sha1,
+                digits: 6,
+                period: 30,
+                is_duplicate: false,
+            }],
+            skipped: vec![ImportSkippedItemDto {
+                source: "Entrada #2".to_string(),
+                reason: "HOTP no soportado".to_string(),
+            }],
+            total_found: 2,
+            ready_count: 1,
+            duplicate_count: 0,
+            skipped_count: 1,
+        };
+        let json = serde_json::to_string(&preview).unwrap();
+        assert!(!json.contains("secret"));
+        assert!(json.contains("\"ready_count\":1"));
+        assert!(json.contains("\"is_duplicate\":false"));
+    }
+
+    #[test]
+    fn test_export_qr_batch_dto_debug_redacts_svg() {
+        let batch = ExportQrBatchDto {
+            batch_index: 0,
+            batch_size: 1,
+            account_count: 1,
+            svg: "<svg>SENSITIVE_QR_CONTENT</svg>".to_string(),
+        };
+        let dbg = format!("{:?}", batch);
+        assert!(dbg.contains("[REDACTED]"));
+        assert!(!dbg.contains("SENSITIVE_QR_CONTENT"));
     }
 }

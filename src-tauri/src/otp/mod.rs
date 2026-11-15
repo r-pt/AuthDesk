@@ -2,6 +2,7 @@
 //! Incluye soporte para Base32 RFC 4648, TOTP RFC 6238 y HOTP RFC 4226.
 
 pub mod base32;
+pub mod migration;
 pub mod totp;
 
 pub use self::base32::{decode_base32, normalize_base32};

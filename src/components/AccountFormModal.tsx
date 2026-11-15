@@ -4,8 +4,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { AccountCodeDto, Language } from "../types";
 import { es } from "../i18n/es";
 import { en } from "../i18n/en";
-import { validateBase32 } from "../utils/base32";
-import { IconClose, IconEye, IconEyeOff, IconArrowDown, IconArrowUp } from "./Icons";
+import { validateBase32, parseOtpAuthUri } from "../utils/base32";
+import { IconClose, IconEye, IconEyeOff, IconArrowDown, IconArrowUp, IconQrCode } from "./Icons";
 
 interface AccountFormModalProps {
   isOpen: boolean;
@@ -15,6 +15,7 @@ interface AccountFormModalProps {
   lang: Language;
   onClose: () => void;
   onSuccess: () => void;
+  onOpenImportExport?: () => void;
 }
 
 export const AccountFormModal: React.FC<AccountFormModalProps> = ({
@@ -25,6 +26,7 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
   lang,
   onClose,
   onSuccess,
+  onOpenImportExport,
 }) => {
   const t = lang === "es" ? es : en;
 
@@ -91,6 +93,31 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
 
   const base32Check = validateBase32(secret);
   const hasSecretInput = secret.trim().length > 0;
+
+  const handleSecretChange = (val: string) => {
+    const parsed = parseOtpAuthUri(val);
+    if (parsed) {
+      setSecret(parsed.secret);
+      if (parsed.issuer && (mode === "add" || !issuer.trim())) {
+        setIssuer(parsed.issuer);
+      }
+      if (parsed.account && (mode === "add" || !accountName.trim())) {
+        setAccountName(parsed.account);
+      }
+      setAlgorithm(parsed.algorithm);
+      setDigits(parsed.digits);
+      setPeriod(parsed.period);
+      if (
+        parsed.algorithm !== "SHA1" ||
+        parsed.digits !== 6 ||
+        parsed.period !== 30
+      ) {
+        setShowAdvanced(true);
+      }
+      return;
+    }
+    setSecret(val);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -177,7 +204,7 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
   return (
     <div className="settings-overlay">
       <div className="settings-header">
-        <span style={{ fontWeight: 600, fontSize: "14px" }}>
+        <span style={{ fontWeight: "var(--font-weight-semibold)", fontSize: "var(--font-size-md)" }}>
           {mode === "add" ? t.addAccountTitle : t.editAccountTitle}
         </span>
         <button
@@ -192,6 +219,19 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
       </div>
 
       <div className="settings-body">
+        {mode === "add" && onOpenImportExport && (
+          <button
+            type="button"
+            className="secondary-action-btn"
+            style={{ padding: "8px 12px", fontSize: "var(--font-size-sm)" }}
+            onClick={onOpenImportExport}
+            disabled={loading}
+          >
+            <IconQrCode size={15} />
+            <span>{t.batchQrImportButton}</span>
+          </button>
+        )}
+
         <form
           onSubmit={handleSubmit}
           style={{ display: "flex", flexDirection: "column", gap: "12px" }}
@@ -205,7 +245,7 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
                 color: "#ef4444",
                 padding: "8px 12px",
                 borderRadius: "8px",
-                fontSize: "12px",
+                fontSize: "var(--font-size-sm)",
               }}
             >
               {errorMessage}
@@ -251,7 +291,7 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
                 className="form-input"
                 style={{ paddingRight: "36px" }}
                 value={secret}
-                onChange={(e) => setSecret(e.target.value)}
+                onChange={(e) => handleSecretChange(e.target.value)}
                 placeholder={
                   mode === "edit"
                     ? t.secretEditPlaceholder

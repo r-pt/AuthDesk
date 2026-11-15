@@ -5,8 +5,7 @@ use tauri::AppHandle;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 pub fn setup_global_shortcut(app: &AppHandle) -> Result<(), String> {
-    let session_type = std::env::var("XDG_SESSION_TYPE").unwrap_or_else(|_| "unknown".to_string());
-    if session_type == "wayland" {
+    if crate::detect_wayland() {
         log::info!(
             "Entorno Wayland detectado: el atajo global del sistema puede requerir 'authdesk --toggle' en la configuración del compositor."
         );
@@ -17,7 +16,7 @@ pub fn setup_global_shortcut(app: &AppHandle) -> Result<(), String> {
         .map_err(|e| format!("Invalid shortcut: {:?}", e))?;
 
     let app_handle = app.clone();
-    let _ = app.plugin(
+    app.plugin(
         tauri_plugin_global_shortcut::Builder::new()
             .with_handler(move |_app, s, event| {
                 if event.state() == ShortcutState::Pressed && s == &shortcut {
@@ -25,9 +24,12 @@ pub fn setup_global_shortcut(app: &AppHandle) -> Result<(), String> {
                 }
             })
             .build(),
-    );
+    )
+    .map_err(|e| format!("Failed to initialize global shortcut plugin: {}", e))?;
 
-    let _ = app.global_shortcut().register(shortcut);
+    app.global_shortcut()
+        .register(shortcut)
+        .map_err(|e| format!("Failed to register global shortcut: {}", e))?;
     Ok(())
 }
 
@@ -36,17 +38,21 @@ pub fn register_global_shortcut() -> Result<(), String> {
 }
 
 pub fn unregister_global_shortcut(app: &AppHandle) -> Result<(), String> {
-    if let Ok(shortcut) = DEFAULT_SHORTCUT.parse::<Shortcut>() {
-        let _ = app.global_shortcut().unregister(shortcut);
-    }
-    Ok(())
+    let shortcut = DEFAULT_SHORTCUT
+        .parse::<Shortcut>()
+        .map_err(|e| format!("Invalid shortcut: {:?}", e))?;
+    app.global_shortcut()
+        .unregister(shortcut)
+        .map_err(|e| format!("Failed to unregister global shortcut: {}", e))
 }
 
 pub fn reregister_global_shortcut(app: &AppHandle) -> Result<(), String> {
-    if let Ok(shortcut) = DEFAULT_SHORTCUT.parse::<Shortcut>() {
-        let _ = app.global_shortcut().register(shortcut);
-    }
-    Ok(())
+    let shortcut = DEFAULT_SHORTCUT
+        .parse::<Shortcut>()
+        .map_err(|e| format!("Invalid shortcut: {:?}", e))?;
+    app.global_shortcut()
+        .register(shortcut)
+        .map_err(|e| format!("Failed to register global shortcut: {}", e))
 }
 
 #[cfg(test)]
@@ -60,7 +66,6 @@ mod tests {
 
     #[test]
     fn test_register_global_shortcut_does_not_panic() {
-        // La función debe manejar de forma segura el entorno sin pánicos
         let _ = register_global_shortcut();
     }
 }

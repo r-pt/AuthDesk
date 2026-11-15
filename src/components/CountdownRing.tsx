@@ -67,9 +67,9 @@ export const CountdownRing: React.FC<CountdownRingProps> = ({
       <span
         style={{
           position: "absolute",
-          fontSize: "10px",
-          fontWeight: 700,
-          fontFamily: "ui-monospace, monospace",
+          fontSize: "var(--font-size-2xs)",
+          fontWeight: "var(--font-weight-bold)",
+          fontFamily: "var(--font-mono)",
           color: strokeColor,
           userSelect: "none",
         }}

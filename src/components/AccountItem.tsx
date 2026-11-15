@@ -35,13 +35,10 @@ export const AccountItem: React.FC<AccountItemProps> = ({
   onMoveDown,
 }) => {
   const formatCode = (code: string) => {
-    const raw = code.replace(/\s+/g, "");
-    if (raw.length === 6) return `${raw.slice(0, 3)} ${raw.slice(3)}`;
-    if (raw.length === 8) return `${raw.slice(0, 4)} ${raw.slice(4)}`;
-    return raw;
+    return code.replace(/\s+/g, "");
   };
 
-  const maskedDisplay = account.digits === 8 ? "•••• ••••" : "••• •••";
+  const maskedDisplay = account.digits === 8 ? "••••••••" : "••••••";
 
   return (
     <div
@@ -70,7 +67,7 @@ export const AccountItem: React.FC<AccountItemProps> = ({
         </div>
       </div>
 
-      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+      <div className="account-right">
         <div className="account-actions" onClick={(e) => e.stopPropagation()}>
           {onMoveUp && (
             <button

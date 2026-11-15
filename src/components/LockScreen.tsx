@@ -15,6 +15,7 @@ interface LockScreenProps {
   pinAvailable?: boolean;
   pinEnabled?: boolean;
   pinAttemptsRemaining?: number | null;
+  passwordless?: boolean;
   theme: ThemeMode;
   lang: Language;
   onCycleTheme: () => void;
@@ -28,6 +29,7 @@ export const LockScreen: React.FC<LockScreenProps> = ({
   pinAvailable,
   pinEnabled,
   pinAttemptsRemaining,
+  passwordless = false,
   theme,
   lang,
   onCycleTheme,
@@ -115,7 +117,7 @@ export const LockScreen: React.FC<LockScreenProps> = ({
             accountCount={accountCount}
             initialAttemptsRemaining={pinAttemptsRemaining ?? null}
             onSuccess={onSuccess}
-            onSwitchToPassword={() => setUsePinMode(false)}
+            onSwitchToPassword={passwordless ? undefined : () => setUsePinMode(false)}
           />
         ) : (
           <UnlockVaultView

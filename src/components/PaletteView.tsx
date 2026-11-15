@@ -19,7 +19,7 @@ import {
   IconCoffee,
 } from "./Icons";
 import { getTranslation, Language } from "../i18n";
-import { ThemeMode, AccountCodeDto } from "../types";
+import { ThemeMode, AccountCodeDto, SettingsTab } from "../types";
 
 export interface PaletteViewProps {
   theme?: ThemeMode;
@@ -52,6 +52,9 @@ export const PaletteView: React.FC<PaletteViewProps> = ({
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
+  const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsTab>("security");
+  const showSettingsRef = useRef(showSettings);
+  showSettingsRef.current = showSettings;
   const [maskCodes, setMaskCodes] = useState<boolean>(() => {
     return localStorage.getItem("authdesk_mask_codes") === "true";
   });
@@ -100,6 +103,9 @@ export const PaletteView: React.FC<PaletteViewProps> = ({
 
   useEffect(() => {
     const handleFocus = () => {
+      if (showSettingsRef.current) {
+        return;
+      }
       setSearchQuery("");
       setSelectedIndex(0);
       setShowSettings(false);
@@ -179,6 +185,20 @@ export const PaletteView: React.FC<PaletteViewProps> = ({
         return;
       }
 
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "n") {
+        e.preventDefault();
+        setIsAddModalOpen(true);
+        return;
+      }
+
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "l") {
+        if (onLock) {
+          e.preventDefault();
+          onLock();
+        }
+        return;
+      }
+
       if (e.altKey && e.key === "ArrowUp") {
         e.preventDefault();
         if (!searchQuery.trim() && selectedIndex > 0) {
@@ -220,7 +240,7 @@ export const PaletteView: React.FC<PaletteViewProps> = ({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [filteredAccounts, selectedIndex, isModalActive, searchQuery, accounts]);
+  }, [filteredAccounts, selectedIndex, isModalActive, searchQuery, accounts, onLock]);
 
   useEffect(() => {
     if (!listContainerRef.current) return;
@@ -238,7 +258,7 @@ export const PaletteView: React.FC<PaletteViewProps> = ({
     >
       <DragBar />
       <div className="search-header">
-        <BrandLogo size={26} />
+        <BrandLogo size={22} />
         <input
           ref={searchInputRef}
           type="text"
@@ -279,7 +299,10 @@ export const PaletteView: React.FC<PaletteViewProps> = ({
         <button
           type="button"
           className="theme-toggle"
-          onClick={() => setShowSettings((prev) => !prev)}
+          onClick={() => {
+            setSettingsInitialTab("security");
+            setShowSettings((prev) => !prev);
+          }}
           title={t.settingsTitle}
           aria-label="Settings"
         >
@@ -309,7 +332,7 @@ export const PaletteView: React.FC<PaletteViewProps> = ({
               textAlign: "center",
               padding: "32px 16px",
               color: "var(--text-secondary)",
-              fontSize: "13px",
+              fontSize: "var(--font-size-base-sm)",
             }}
           >
             {t.emptyAccounts}
@@ -348,7 +371,11 @@ export const PaletteView: React.FC<PaletteViewProps> = ({
 
       <SettingsModal
         isOpen={showSettings}
-        onClose={() => setShowSettings(false)}
+        initialTab={settingsInitialTab}
+        onClose={() => {
+          setShowSettings(false);
+          setSettingsInitialTab("security");
+        }}
         lang={lang}
         theme={theme}
         onSelectTheme={(th) => {
@@ -363,7 +390,7 @@ export const PaletteView: React.FC<PaletteViewProps> = ({
         onVaultStatusChanged={() => {
           if (onVaultStatusChanged) onVaultStatusChanged();
         }}
-        onRefreshAccounts={() => {
+        onAccountsChanged={() => {
           refresh();
         }}
       />
@@ -378,6 +405,11 @@ export const PaletteView: React.FC<PaletteViewProps> = ({
         onSuccess={() => {
           refresh();
           if (onVaultStatusChanged) onVaultStatusChanged();
+        }}
+        onOpenImportExport={() => {
+          setIsAddModalOpen(false);
+          setSettingsInitialTab("import_export");
+          setShowSettings(true);
         }}
       />
 

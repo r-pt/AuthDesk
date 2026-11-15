@@ -1,0 +1,110 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. v0.1.2; defaults to v<version> from package.json)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release-linux:
+    name: Build & Publish Linux Release
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+          cache: 'npm'
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Install Tauri Linux & packaging dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libdbus-1-dev \
+            patchelf \
+            pkg-config \
+            xdg-utils \
+            rpm \
+            libfuse2t64
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build Tauri bundles (.deb, .rpm, .AppImage)
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: '1'
+        run: npm run tauri build
+
+      - name: Collect release assets and generate SHA256SUMS
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          find src-tauri/target/release/bundle/deb -maxdepth 1 -type f -name '*.deb' -exec cp -v {} release-assets/ \;
+          find src-tauri/target/release/bundle/rpm -maxdepth 1 -type f -name '*.rpm' -exec cp -v {} release-assets/ \;
+          find src-tauri/target/release/bundle/appimage -maxdepth 1 -type f -name '*.AppImage' -exec cp -v {} release-assets/ \;
+          cp -v src-tauri/target/release/authdesk release-assets/authdesk
+          chmod +x release-assets/authdesk
+          ls -la release-assets/
+          test -n "$(find release-assets -name '*.deb')"
+          test -n "$(find release-assets -name '*.rpm')"
+          test -n "$(find release-assets -name '*.AppImage')"
+          test -f release-assets/authdesk
+          (cd release-assets && sha256sum * > SHA256SUMS && cat SHA256SUMS)
+
+      - name: Determine release tag
+        id: release_tag
+        shell: bash
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
+            TAG="${GITHUB_REF_NAME}"
+          elif [[ -n "${INPUT_TAG}" ]]; then
+            TAG="${INPUT_TAG}"
+          else
+            TAG="v$(node -p "require('./package.json').version")"
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Attach assets to GitHub Release
+        uses: softprops/action-gh-release@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.release_tag.outputs.tag }}
+          name: "AuthDesk ${{ steps.release_tag.outputs.tag }}"
+          generate_release_notes: true
+          files: |
+            release-assets/*

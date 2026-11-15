@@ -3,7 +3,15 @@ import React, { useState, useEffect, useCallback } from "react";
 import { PaletteView } from "./components/PaletteView";
 import { LockScreen } from "./components/LockScreen";
 import { useAutoLock } from "./hooks/useAutoLock";
-import { VaultStatusDto, ThemeMode, Language, WindowSettingsDto } from "./types";
+import {
+  VaultStatusDto,
+  ThemeMode,
+  Language,
+  WindowSettingsDto,
+  WindowMode,
+  normalizeWindowMode,
+  parseStoredWindowSettings,
+} from "./types";
 import "./styles/global.css";
 
 const THEMES: ThemeMode[] = ["dark", "light", "coffee"];
@@ -15,6 +23,10 @@ export const App: React.FC = () => {
   const [lang, setLang] = useState<Language>(() => {
     return (localStorage.getItem("authdesk_lang") as Language) || "es";
   });
+  const [windowMode, setWindowMode] = useState<WindowMode>(() => {
+    const saved = parseStoredWindowSettings(localStorage.getItem("authdesk_window_settings"));
+    return saved ? normalizeWindowMode(saved.mode) : "popup";
+  });
   const [vaultStatus, setVaultStatus] = useState<VaultStatusDto | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -22,37 +34,43 @@ export const App: React.FC = () => {
     const syncWindowSettings = async () => {
       try {
         const { invoke } = await import("@tauri-apps/api/core");
-        const saved = localStorage.getItem("authdesk_window_settings");
-        let parsed: WindowSettingsDto | null = null;
-        if (saved) {
-          try {
-            const val = JSON.parse(saved);
-            if (val && typeof val === "object") {
-              parsed = val;
-            }
-          } catch {
-            parsed = null;
-          }
-        }
+        const parsed = parseStoredWindowSettings(localStorage.getItem("authdesk_window_settings"));
         if (parsed) {
-          if (parsed.popup_position) {
-            await invoke("set_popup_position", { pos: parsed.popup_position });
+          const normalizedMode = normalizeWindowMode(parsed.mode);
+          const normalizedSettings: WindowSettingsDto = {
+            ...parsed,
+            mode: normalizedMode,
+          };
+          localStorage.setItem("authdesk_window_settings", JSON.stringify(normalizedSettings));
+          setWindowMode(normalizedMode);
+          if (normalizedSettings.popup_position) {
+            await invoke("set_popup_position", { pos: normalizedSettings.popup_position });
           }
-          if (parsed.mode) {
-            await invoke("set_window_mode", { mode: parsed.mode });
+          await invoke("set_window_mode", { mode: normalizedMode });
+          if (typeof normalizedSettings.resizable === "boolean") {
+            await invoke("set_window_resizable", { resizable: normalizedSettings.resizable });
           }
-          if (typeof parsed.always_on_top === "boolean") {
-            await invoke("set_always_on_top", { enabled: parsed.always_on_top });
+          if (typeof normalizedSettings.always_on_top === "boolean") {
+            await invoke("set_always_on_top", { enabled: normalizedSettings.always_on_top });
           }
-          if (typeof parsed.auto_hide_on_blur === "boolean") {
-            await invoke("set_auto_hide_on_blur", { enabled: parsed.auto_hide_on_blur });
+          if (typeof normalizedSettings.auto_hide_on_blur === "boolean") {
+            await invoke("set_auto_hide_on_blur", { enabled: normalizedSettings.auto_hide_on_blur });
           }
-          if (typeof parsed.hide_on_copy === "boolean") {
-            localStorage.setItem("authdesk_hide_on_copy", String(parsed.hide_on_copy));
+          if (typeof normalizedSettings.hide_on_copy === "boolean") {
+            localStorage.setItem("authdesk_hide_on_copy", String(normalizedSettings.hide_on_copy));
           }
         } else {
           const initial = await invoke<WindowSettingsDto>("get_window_settings");
-          localStorage.setItem("authdesk_window_settings", JSON.stringify(initial));
+          const normalizedMode = normalizeWindowMode(initial.mode);
+          const normalizedSettings: WindowSettingsDto = {
+            ...initial,
+            mode: normalizedMode,
+          };
+          setWindowMode(normalizedMode);
+          localStorage.setItem("authdesk_window_settings", JSON.stringify(normalizedSettings));
+        }
+        if (localStorage.getItem("authdesk_global_shortcut") === "false") {
+          await invoke("toggle_global_shortcut", { enabled: false });
         }
       } catch (e) {
         console.error(e);
@@ -97,8 +115,16 @@ export const App: React.FC = () => {
       const saved = localStorage.getItem("authdesk_autolock_ms");
       setAutoLockTimeout(saved !== null ? parseInt(saved, 10) : 5 * 60 * 1000);
     };
+    const handleWindowModeChange = (event: Event) => {
+      const customEvent = event as CustomEvent<WindowMode>;
+      setWindowMode(normalizeWindowMode(customEvent.detail));
+    };
     window.addEventListener("authdesk-autolock-changed", handleAutolockChange);
-    return () => window.removeEventListener("authdesk-autolock-changed", handleAutolockChange);
+    window.addEventListener("authdesk-window-mode-changed", handleWindowModeChange);
+    return () => {
+      window.removeEventListener("authdesk-autolock-changed", handleAutolockChange);
+      window.removeEventListener("authdesk-window-mode-changed", handleWindowModeChange);
+    };
   }, []);
 
   const refreshVaultStatus = useCallback(async () => {
@@ -148,12 +174,15 @@ export const App: React.FC = () => {
   }, [refreshVaultStatus]);
 
   const isUnlocked = Boolean(vaultStatus?.initialized && !vaultStatus?.locked);
+  const canLock = Boolean(
+    vaultStatus?.initialized && (!vaultStatus?.passwordless || vaultStatus?.pin_enabled)
+  );
 
   useAutoLock({
-    enabled: isUnlocked && autoLockTimeout > 0,
+    enabled: isUnlocked && canLock && autoLockTimeout > 0,
     timeoutMs: autoLockTimeout > 0 ? autoLockTimeout : 5 * 60 * 1000,
     onLock: () => {
-      setVaultStatus((prev) => (prev ? { ...prev, locked: true } : null));
+      refreshVaultStatus();
     },
   });
 
@@ -162,15 +191,18 @@ export const App: React.FC = () => {
   }, [refreshVaultStatus]);
 
   const handleManualLock = useCallback(async () => {
+    if (!canLock) {
+      return;
+    }
     try {
       const { invoke } = await import("@tauri-apps/api/core");
       await invoke("lock_vault");
     } catch {}
-    setVaultStatus((prev) => (prev ? { ...prev, locked: true } : null));
-  }, []);
+    await refreshVaultStatus();
+  }, [canLock, refreshVaultStatus]);
 
   return (
-    <div className="palette-container" data-theme={theme}>
+    <div className="palette-container" data-theme={theme} data-window-mode={windowMode}>
       {loading ? (
         <div className="skeleton-loading-view">
           <div className="skeleton-spinner" />
@@ -182,6 +214,7 @@ export const App: React.FC = () => {
           pinAvailable={vaultStatus?.pin_available ?? false}
           pinEnabled={vaultStatus?.pin_enabled ?? false}
           pinAttemptsRemaining={vaultStatus?.pin_attempts_remaining ?? null}
+          passwordless={vaultStatus?.passwordless ?? false}
           theme={theme}
           lang={lang}
           onCycleTheme={cycleTheme}
@@ -197,7 +230,7 @@ export const App: React.FC = () => {
           onCycleTheme={cycleTheme}
           onSelectTheme={selectTheme}
           onSelectLang={selectLang}
-          onLock={handleManualLock}
+          onLock={canLock ? handleManualLock : undefined}
           onVaultStatusChanged={refreshVaultStatus}
         />
       )}

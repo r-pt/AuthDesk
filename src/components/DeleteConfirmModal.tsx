@@ -81,8 +81,8 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
           <h3
             style={{
               margin: "0 0 8px 0",
-              fontSize: "16px",
-              fontWeight: 600,
+              fontSize: "var(--font-size-lg)",
+              fontWeight: "var(--font-weight-semibold)",
               color: "var(--text-primary)",
             }}
           >
@@ -91,7 +91,7 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
           <p
             style={{
               margin: 0,
-              fontSize: "12.5px",
+              fontSize: "var(--font-size-sm-plus)",
               lineHeight: 1.5,
               color: "var(--text-secondary)",
             }}
@@ -112,7 +112,7 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
               color: "#ef4444",
               padding: "8px 12px",
               borderRadius: "8px",
-              fontSize: "12px",
+              fontSize: "var(--font-size-sm)",
             }}
           >
             <IconAlertTriangle size={16} />
