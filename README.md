@@ -153,14 +153,19 @@ npm ci
 npm run tauri dev
 ```
 
-### Build Native Release Packages (`.deb`, `.rpm`, `AppImage`)
+### Build Release Binary & Native Packages (`.deb`, `.rpm`, `AppImage`)
 
-```bash
-# In containerized or FUSE-less environments, export APPIMAGE_EXTRACT_AND_RUN=1
-npm run tauri build
-```
+- **Standalone Binary Only (recommended for Arch Linux / manual install)**:
+  ```bash
+  npm run tauri build -- --no-bundle
+  ```
+- **All Linux Bundles (`.deb`, `.rpm`, `AppImage` + binary)**:
+  ```bash
+  # In containerized or FUSE-less environments, export APPIMAGE_EXTRACT_AND_RUN=1
+  npm run tauri build
+  ```
 
-Generated artifacts are written to `src-tauri/target/release/bundle/`:
+Generated artifacts are written to `src-tauri/target/release/` and `src-tauri/target/release/bundle/`:
 - **Debian / Ubuntu**: `src-tauri/target/release/bundle/deb/AuthDesk_0.2.0_amd64.deb`
 - **Fedora / openSUSE**: `src-tauri/target/release/bundle/rpm/AuthDesk-0.2.0-1.x86_64.rpm`
 - **Universal Linux**: `src-tauri/target/release/bundle/appimage/AuthDesk_0.2.0_amd64.AppImage`
@@ -169,6 +174,8 @@ Generated artifacts are written to `src-tauri/target/release/bundle/`:
 GitHub Actions (`.github/workflows/release.yml`) publishes all four artifacts alongside `SHA256SUMS` on `v*` tag pushes and manual `workflow_dispatch` triggers (`sha256sum -c SHA256SUMS`).
 
 ### Installing the Built Package
+
+> Build first with `npm run tauri build -- --no-bundle` (standalone binary) or `npm run tauri build` (`.deb` / `.rpm` / `.AppImage`).
 
 - **Debian / Ubuntu**:
   ```bash
@@ -185,6 +192,7 @@ GitHub Actions (`.github/workflows/release.yml`) publishes all four artifacts al
   ```
 - **Arch Linux / Standalone Binary**:
   ```bash
+  npm run tauri build -- --no-bundle
   sudo install -Dm755 src-tauri/target/release/authdesk /usr/local/bin/authdesk
   ```
 
